@@ -10,68 +10,43 @@ PLUGINS=(
 )
 N=${#PLUGINS[@]}
 
-stty_state=""
-if [[ -t 0 ]]; then stty_state=$(stty -g 2>/dev/null || true); fi
-restore_ui() {
-  if [[ -n "$stty_state" ]]; then stty "$stty_state" 2>/dev/null || true; fi
-  tput cnorm 2>/dev/null || true
-}
-trap restore_ui EXIT INT TERM
-
-current=0
-checks=()
-for ((i = 0; i < N; i++)); do checks[$i]=1; done
-
-render() {
-  printf '\r'
-  for ((i = 0; i < N; i++)); do
-    name="${PLUGINS[$i]%%:*}"
-    desc="${PLUGINS[$i]#*:}"
-    marker=" "
-    [[ ${checks[$i]} -eq 1 ]] && marker="x"
-    lead="  "
-    [[ $i -eq $current ]] && lead=">"
-    printf '\033[2K  %s [%s] %-24s %s\n' "$lead" "$marker" "$name" "$desc"
-  done
-  printf '\033[%dA' "$N"
-}
-
-if [[ -t 0 ]]; then
-  tput civis 2>/dev/null || true
-  while :; do
-    render
-    if ! IFS= read -rsn 1 -t 600 key; then break; fi
-    case "$key" in
-      $'\x1b')
-        rest=""
-        IFS= read -rsn 3 -t 1 rest || true
-        case "$rest" in
-          $'\x1b[A') ((current = current > 0 ? current - 1 : N - 1)) ;;
-          $'\x1b[B') ((current = current + 1 < N ? current + 1 : 0)) ;;
-        esac
-        ;;
-      'k' | 'K')
-        ((current = current > 0 ? current - 1 : N - 1))
-        ;;
-      'j' | 'J')
-        ((current = current + 1 < N ? current + 1 : 0))
-        ;;
-      ' ') checks[$current]=$((1 - checks[$current])) ;;
-      $'\r' | $'\n') break ;;
-    esac
-  done
-  printf '\033[%dB' "$N"
-fi
-tput cnorm 2>/dev/null || true
 echo ""
+echo "Select plugins to install. Type comma/space separated numbers, or Enter for all."
+echo ""
+for ((i = 0; i < N; i++)); do
+  name="${PLUGINS[$i]%%:*}"
+  desc="${PLUGINS[$i]#*:}"
+  printf '  %d. %-26s %s\n' "$((i + 1))" "$name" "$desc"
+done
+echo ""
+printf "Selection [Enter = all]: "
+read -r -p "" answer || true
 
 picks=()
-for ((i = 0; i < N; i++)); do
-  if [[ ${checks[$i]} -eq 1 ]]; then picks+=("${PLUGINS[$i]%%:*}"); fi
-done
+if [[ -z "${answer// /}" ]]; then
+  picks=("${PLUGINS[@]%%:*}")
+else
+  IFS=' ,' read -r -a parts <<< "$answer"
+  for part in "${parts[@]}"; do
+    num="${part//[^0-9]/}"
+    [[ -z "$num" ]] && continue
+    idx=$((num - 1))
+    if ((idx >= 0 && idx < N)); then
+      name="${PLUGINS[$idx]%%:*}"
+      existing=false
+      for pick in ${picks[@]+"${picks[@]}"}; do
+        [[ "$pick" == "$name" ]] && existing=true
+      done
+      if [[ "$existing" == false ]]; then
+        picks+=("$name")
+      fi
+    fi
+  done
+fi
 
+echo ""
 if [[ ${#picks[@]} -eq 0 ]]; then
-  echo "No plugins selected; your Xal config is unchanged."
+  echo "No valid selections; your Xal config is unchanged."
   exit 0
 fi
 echo "Installing: ${picks[*]}"
@@ -84,4 +59,3 @@ for p in "${picks[@]}"; do
 done
 
 echo "Done. Restart Xal to load the installed plugins."
-echo "(tip: ↑/↓ or j/k move · Space toggle · Enter confirm)"
