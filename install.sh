@@ -44,7 +44,7 @@ if [[ -t 0 ]]; then
     case "$key" in
       $'\x1b')
         rest=""
-        IFS= read -rsn 3 -t 0.1 rest || true
+        IFS= read -rsn 3 -t 1 rest || true
         case "$rest" in
           $'\x1b[A') ((current = current > 0 ? current - 1 : N - 1)) ;;
           $'\x1b[B') ((current = current + 1 < N ? current + 1 : 0)) ;;
