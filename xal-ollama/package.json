@@ -1,0 +1,16 @@
+{
+  "name": "xal-ollama",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "module": "plugin.ts",
+  "scripts": {
+    "check": "tsc --noEmit && prettier --check .",
+    "check:fix": "prettier --write . && bun run check"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "prettier": "^3.9.6",
+    "typescript": "5.9.3"
+  }
+}
