@@ -24,8 +24,21 @@ if [ ! -f "$CONFIG" ]; then
 fi
 
 DEFAULT_URL="http://localhost:8000/v1"
-read -r -p "Command Code bridge base URL [default: $DEFAULT_URL]: " BASE_URL || true
-BASE_URL="${BASE_URL:-$DEFAULT_URL}"
+KEEP_URL="$(python3 -c "
+import json, sys
+try:
+    cfg = json.load(open(sys.argv[1]))
+    print(cfg.get('pluginConfig', {}).get('commandcode-bridge', {}).get('baseUrl', ''))
+except Exception:
+    pass
+" "$CONFIG")" 2>/dev/null || true
+if [ -n "$KEEP_URL" ]; then
+  read -r -p "Command Code bridge base URL [keep: $KEEP_URL]: " BASE_URL || true
+  BASE_URL="${BASE_URL:-$KEEP_URL}"
+else
+  read -r -p "Command Code bridge base URL [default: $DEFAULT_URL]: " BASE_URL || true
+  BASE_URL="${BASE_URL:-$DEFAULT_URL}"
+fi
 
 python3 - "$CONFIG" "$NAME" "$PLUGIN" "$BASE_URL" <<'PY'
 import json, sys

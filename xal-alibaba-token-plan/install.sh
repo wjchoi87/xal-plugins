@@ -23,8 +23,21 @@ if [ ! -f "$CONFIG" ]; then
   chmod 600 "$CONFIG"
 fi
 
+KEEP_URL="$(python3 -c "
+import json, sys
+try:
+    cfg = json.load(open(sys.argv[1]))
+    print(cfg.get('pluginConfig', {}).get('alibaba-token-plan', {}).get('baseUrl', ''))
+except Exception:
+    pass
+" "$CONFIG")" 2>/dev/null || true
 while true; do
-  read -r -p "Alibaba token plan base URL (required): " BASE_URL || true
+  if [ -n "$KEEP_URL" ]; then
+    read -r -p "Alibaba token plan base URL [keep: $KEEP_URL]: " BASE_URL || true
+    BASE_URL="${BASE_URL:-$KEEP_URL}"
+  else
+    read -r -p "Alibaba token plan base URL (required): " BASE_URL || true
+  fi
   if [ -n "$BASE_URL" ]; then
     break
   fi
