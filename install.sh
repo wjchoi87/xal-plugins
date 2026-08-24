@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 PLUGINS=(
   "xal-ollama:Local Ollama server"
+  "xal-litellm:LiteLLM proxy server"
   "xal-commandcode-bridge:Command Code bridge"
   "xal-alibaba-token-plan:Alibaba token plan"
 )

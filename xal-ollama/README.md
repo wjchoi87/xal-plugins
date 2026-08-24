@@ -1,6 +1,6 @@
 # xal-ollama
 
-Local [Ollama](https://ollama.com) server provider plugin for [Xal](https://github.com/xal-sh/xal). OpenAI-compatible endpoint, no API key required.
+Local [Ollama](https://ollama.com) server provider plugin for [Xal](https://github.com/xal-sh/xal). OpenAI-compatible endpoint; API key is optional.
 
 ## Install
 
@@ -37,11 +37,11 @@ Models that advertise a `thinking` capability are detected automatically from th
 xal connect ollama
 ```
 
-No API key is needed. The plugin confirms the local server and stores an empty credential.
+The plugin prompts for an API key. For a local server, press Enter to skip — the plugin confirms the local server and stores an empty credential. To protect an endpoint with an API key, enter the key when prompted; it is sent as `Authorization: Bearer <key>` on chat completion requests.
 
 ## Use
 
-The model catalog is discovered from the server's `/v1/models` endpoint. Run `/model refresh` or `xal models ollama` to reload it. Start Xal and pick a model:
+The model catalog is discovered from the server's `/api/tags` endpoint. Run `/model refresh` or `xal models ollama` to reload it. Start Xal and pick a model:
 
 ```bash
 xal

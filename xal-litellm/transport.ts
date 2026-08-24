@@ -1,6 +1,6 @@
 import { baseUrl } from "./config";
 import { providerFetch, raiseForStatus } from "./api";
-import { apiKey } from "./auth";
+import { authHeaders } from "./auth";
 import { PROVIDER_ID, PROVIDER_NAME } from "./provider";
 import {
   asNumber,
@@ -278,16 +278,6 @@ function reasoningItem(
   };
 }
 
-async function authorizationHeader(
-  profileId: string,
-): Promise<Record<string, string>> {
-  try {
-    return { authorization: `Bearer ${await apiKey(profileId)}` };
-  } catch {
-    return {};
-  }
-}
-
 export async function* streamResponse(
   profileId: string,
   request: StreamRequest,
@@ -316,8 +306,8 @@ export async function* streamResponse(
       headers: {
         accept: "text/event-stream",
         "content-type": "application/json",
-        ...(await authorizationHeader(profileId)),
-        "user-agent": "xal-ollama/0.1.0",
+        ...(await authHeaders(profileId)),
+        "user-agent": "xal-litellm/0.1.0",
       },
       body,
       signal: request.signal,

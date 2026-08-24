@@ -1,14 +1,14 @@
 import { resolveBaseUrl } from "./config";
-import { ollamaProvider } from "./provider";
+import { litellmProvider } from "./provider";
 import { configureRuntime } from "./runtime";
 import type { Plugin } from "./types";
 
 const plugin: Plugin = {
-  name: "ollama",
+  name: "litellm",
   register(ctx) {
     configureRuntime(ctx.runtime);
     resolveBaseUrl(ctx.config);
-    ctx.registerProvider(ollamaProvider);
+    ctx.registerProvider(litellmProvider);
   },
 };
 

@@ -7,6 +7,7 @@ Provider plugins for [Xal](https://github.com/xal-sh/xal). OpenAI-compatible end
 | Plugin                              | Provider                | Auth      | Base URL                                        |
 | ----------------------------------- | ----------------------- | --------- | ----------------------------------------------- |
 | [xal-ollama](xal-ollama)            | Local Ollama server     | none      | `http://localhost:11434/v1` (default)           |
+| [xal-litellm](xal-litellm)          | LiteLLM proxy server    | API key   | `http://localhost:4000/v1` (default)            |
 | [xal-commandcode-bridge](xal-commandcode-bridge) | Command Code bridge | API key   | `http://localhost:8000/v1` (default)            |
 | [xal-alibaba-token-plan](xal-alibaba-token-plan) | Alibaba token plan | API key   | required — set during install                  |
 
@@ -26,8 +27,9 @@ cd xal-plugins
 Select plugins to install. Type comma/space separated numbers, or Enter for all.
 
   1. xal-ollama                 Local Ollama server
-  2. xal-commandcode-bridge     Command Code bridge
-  3. xal-alibaba-token-plan     Alibaba token plan
+  2. xal-litellm                LiteLLM proxy server
+  3. xal-commandcode-bridge     Command Code bridge
+  4. xal-alibaba-token-plan     Alibaba token plan
 
 Selection [Enter = all]:
 ```
@@ -44,6 +46,7 @@ cd xal-ollama && ./install.sh
 
 ```bash
 xal connect ollama                 # no API key (local)
+xal connect litellm                 # paste the proxy API key (Enter to skip)
 xal connect commandcode-bridge      # paste the bridge API key
 xal connect alibaba-token-plan      # paste the plan API key
 ```
