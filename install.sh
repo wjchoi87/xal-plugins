@@ -8,6 +8,7 @@ PLUGINS=(
   "xal-litellm:LiteLLM proxy server"
   "xal-commandcode-bridge:Command Code bridge"
   "xal-alibaba-token-plan:Alibaba token plan"
+  "xal-opencode-free:OpenCode Free models"
 )
 N=${#PLUGINS[@]}
 
