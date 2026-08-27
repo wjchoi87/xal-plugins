@@ -1,6 +1,6 @@
 # xal-alibaba-token-plan
 
-Alibaba token plan provider plugin for [Xal](https://github.com/xal-sh/xal). OpenAI-compatible endpoint with an API key; the base URL must be configured.
+Alibaba token plan provider plugin for [Xal](https://github.com/xal-sh/xal). OpenAI-compatible endpoint with an API key; the base URL defaults to Alibaba's token plan endpoint.
 
 ## Install
 
@@ -14,16 +14,18 @@ cd xal-alibaba-token-plan
 
 The installer copies the plugin into `$XAL_DIR/plugins/xal-alibaba-token-plan` (`$XAL_DIR` is `$XAL_HOME`, or `~/.xal` by default), adds `./plugins/xal-alibaba-token-plan` to the `plugins` array in `config.json`, and preserves any existing entries.
 
+The installer defaults `pluginConfig["alibaba-token-plan"].baseUrl` to `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1`; press Enter to accept the default or type a different endpoint.
+
 ## Configure
 
-This provider has no default endpoint; configure `pluginConfig["alibaba-token-plan"].baseUrl`:
+The installer writes `pluginConfig["alibaba-token-plan"].baseUrl` for you. It defaults to Alibaba's token plan endpoint; change it to your own endpoint if needed:
 
 ```json
 {
   "plugins": ["./plugins/xal-plugins/xal-alibaba-token-plan"],
   "pluginConfig": {
     "alibaba-token-plan": {
-      "baseUrl": "https://api.your-token-plan.example.com/v1"
+      "baseUrl": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
     }
   }
 }

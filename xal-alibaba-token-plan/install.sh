@@ -23,6 +23,7 @@ if [ ! -f "$CONFIG" ]; then
   chmod 600 "$CONFIG"
 fi
 
+DEFAULT_URL="https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
 KEEP_URL="$(python3 -c "
 import json, sys
 try:
@@ -31,18 +32,13 @@ try:
 except Exception:
     pass
 " "$CONFIG")" 2>/dev/null || true
-while true; do
-  if [ -n "$KEEP_URL" ]; then
-    read -r -p "Alibaba token plan base URL [keep: $KEEP_URL]: " BASE_URL || true
-    BASE_URL="${BASE_URL:-$KEEP_URL}"
-  else
-    read -r -p "Alibaba token plan base URL (required): " BASE_URL || true
-  fi
-  if [ -n "$BASE_URL" ]; then
-    break
-  fi
-  echo "base URL cannot be empty."
-done
+if [ -n "$KEEP_URL" ]; then
+  read -r -p "Alibaba token plan base URL [keep: $KEEP_URL]: " BASE_URL || true
+  BASE_URL="${BASE_URL:-$KEEP_URL}"
+else
+  read -r -p "Alibaba token plan base URL [default: $DEFAULT_URL]: " BASE_URL || true
+  BASE_URL="${BASE_URL:-$DEFAULT_URL}"
+fi
 
 python3 - "$CONFIG" "$NAME" "$PLUGIN" "$BASE_URL" <<'PY'
 import json, sys
