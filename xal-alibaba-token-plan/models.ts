@@ -3,6 +3,12 @@ import { dirname, join } from "node:path";
 import { describeError, providerFetch, raiseForStatus } from "./api";
 import { apiKey } from "./auth";
 import { baseUrl } from "./config";
+import {
+  bundledContextWindowFor,
+  configOverrideFor,
+  contextWindowsFor,
+  fallbackContextWindow,
+} from "./context";
 import { PROVIDER_NAME } from "./provider";
 import { clientRuntime } from "./runtime";
 import {
@@ -23,6 +29,45 @@ interface CacheEntry {
 function thinkingFor(supported: boolean): ThinkingOptions | undefined {
   if (!supported) return undefined;
   return { options: ["none", "low", "medium", "high", "max"], default: "high" };
+}
+
+/* Fill in the context window the endpoint never reports. Source precedence:
+ * 1. `modelContextWindows` config override for the exact model ID
+ * 2. the bundled context table
+ * 3. the `defaultContextWindow` config fallback
+ * 4. a value already provided by the endpoint/cache (unknown models only)
+ *
+ * The bundled/override value is the model's maximum. Xal's session budget uses
+ * a conservative default (min of the maximum and 256K) so compaction engages
+ * early, and a `contextWindows` ladder lets `/context-window` raise the budget
+ * up to the maximum — the ladder shape Xal's own OpenAI provider uses. Xal
+ * validates that the ladder's first rung equals `contextWindow`, so the value
+ * exposed as `contextWindow` is the budget, never the raw maximum.
+ *
+ * Policy change:
+ * - before: ModelInfo.contextWindow stayed undefined, so Xal had no context
+ *   budget, could not compact, and `/context-window` was unsupported
+ * - after: known models carry a context window (budget) plus a selectable
+ *   ladder when their maximum exceeds the default budget; unknown IDs stay
+ *   untouched unless `defaultContextWindow` is configured
+ * - reason: the OpenAI-compatible `/models` response has no context field
+ * - scope: catalog entries returned to Xal, both live and cached */
+function withContextWindow(model: ModelInfo): ModelInfo {
+  const maximum =
+    configOverrideFor(model.id) ??
+    bundledContextWindowFor(model.id) ??
+    fallbackContextWindow() ??
+    model.contextWindow;
+  if (maximum === undefined) return model;
+  const contextWindows = contextWindowsFor(maximum);
+  const budget = contextWindows?.[0] ?? maximum;
+  if (model.contextWindow === budget && contextWindows === undefined)
+    return model;
+  return {
+    ...model,
+    contextWindow: budget,
+    ...(contextWindows === undefined ? {} : { contextWindows }),
+  };
 }
 
 async function cachePath(profileId: string): Promise<string> {
@@ -149,9 +194,11 @@ async function models(profileId: string): Promise<{
 }> {
   const cached = await readCache(profileId);
   if (cached && Date.now() - cached.updatedAt < CACHE_TTL_MS) {
-    return { models: cached.models, fromCache: true };
+    /* Enrich on read so catalogs cached before context windows existed (and
+     * therefore stored without them) still get a context window. */
+    return { models: cached.models.map(withContextWindow), fromCache: true };
   }
-  const live = await liveDiscover(profileId);
+  const live = (await liveDiscover(profileId)).map(withContextWindow);
   await writeCache(profileId, live);
   return { models: live, fromCache: false };
 }

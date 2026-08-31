@@ -93,6 +93,10 @@ export interface ModelInfo {
   id: string;
   name: string;
   contextWindow?: number;
+  /* Selectable context windows, ascending; the first entry must equal
+   * `contextWindow`. When absent, Xal reports the model as not supporting
+   * configurable context windows. */
+  contextWindows?: number[];
   inputModalities: ModelInputModality[];
   thinking?: ThinkingOptions;
 }

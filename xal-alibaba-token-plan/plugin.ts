@@ -1,3 +1,4 @@
+import { configureContext } from "./context";
 import { resolveBaseUrl } from "./config";
 import { alibabaTokenPlanProvider } from "./provider";
 import { configureRuntime } from "./runtime";
@@ -8,6 +9,7 @@ const plugin: Plugin = {
   register(ctx) {
     configureRuntime(ctx.runtime);
     resolveBaseUrl(ctx.config);
+    configureContext(ctx.config);
     ctx.registerProvider(alibabaTokenPlanProvider);
   },
 };
