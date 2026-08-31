@@ -17,6 +17,12 @@ function collectorTurn(usage: Usage): ReturnType<MetricsCollector["finish"]> {
   return collector.finish("session-a", usage);
 }
 
+function turnWithOutput(
+  outputTokens: number,
+): NonNullable<ReturnType<MetricsCollector["finish"]>> {
+  return collectorTurn({ outputTokens })!;
+}
+
 afterEach(() => {
   for (const dir of tempDirs.splice(0))
     rmSync(dir, { recursive: true, force: true });
@@ -88,6 +94,29 @@ describe("MetricsWriter (#29–32, #43)", () => {
       .split("\n");
     expect(lines.length).toBeGreaterThan(0);
     expect(lines.length).toBeLessThan(20);
+  });
+
+  test("concurrent appends are serialized: every line lands in order", async () => {
+    const dir = tempDir();
+    const writer = new MetricsWriter(join(dir, "metrics.jsonl"), 240);
+    const appends = Array.from({ length: 40 }, (_, index) =>
+      writer.append(turnWithOutput(index)),
+    );
+    await Promise.all(appends);
+
+    const lines = readFileSync(join(dir, "metrics.jsonl"), "utf8")
+      .trim()
+      .split("\n");
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) {
+      const stored = JSON.parse(line) as { outputTokens?: number };
+      expect(typeof stored.outputTokens).toBe("number");
+    }
+    // the final append is the last line, untouched by any later trim
+    const last = JSON.parse(lines[lines.length - 1]!) as {
+      outputTokens: number;
+    };
+    expect(last.outputTokens).toBe(39);
   });
 
   test("storage failure never throws (#43)", async () => {

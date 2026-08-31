@@ -61,6 +61,22 @@ describe("streaming metrics (#13–17)", () => {
     expect(completed!.generationMs).toBe(100 + 100);
   });
 
+  test("an item_done boundary is not a stall (#16)", () => {
+    const clock = fakeClock();
+    const collector = new MetricsCollector({ clock });
+    collector.start(session());
+    collector.stream("session-a", text());
+    collector.stream("session-a", {
+      type: "item_done",
+      item: { type: "assistant_message", text: "x" },
+    });
+    clock.advance(5000);
+    collector.stream("session-a", text());
+    const completed = collector.finish("session-a", {});
+
+    expect(completed!.stalls).toEqual([]);
+  });
+
   test("reasoning before text records first reasoning and first event", () => {
     const clock = fakeClock();
     const collector = new MetricsCollector({ clock });

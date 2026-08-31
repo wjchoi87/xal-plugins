@@ -55,6 +55,9 @@ export function applyStreamEvent(
       recordDelta(turn, state, now, stallThresholdMs);
       break;
     case "item_done":
+      // Item boundaries are not text/reasoning deltas: a gap after one is a
+      // round or tool boundary, never a stall (#16).
+      state.deltaChainBroken = true;
       break;
     case "done":
       closeRound(turn, state, now);

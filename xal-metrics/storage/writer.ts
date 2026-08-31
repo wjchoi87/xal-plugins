@@ -99,24 +99,34 @@ export function toStoredTurn(turn: CompletedTurn): StoredTurn {
 export class MetricsWriter {
   readonly path: string;
   private readonly maxBytes: number;
+  private chain: Promise<void> = Promise.resolve();
 
   constructor(path: string, maxBytes = DEFAULT_MAX_FILE_BYTES) {
     this.path = path;
     this.maxBytes = maxBytes;
   }
 
-  /** Storage failures never surface into the agent turn (#43): swallowed here. */
-  async append(turn: CompletedTurn): Promise<void> {
-    try {
-      await mkdir(dirname(this.path), { recursive: true });
-      await appendFile(this.path, `${JSON.stringify(toStoredTurn(turn))}\n`, {
-        encoding: "utf8",
-        mode: 0o600,
-      });
-      await this.trimIfNeeded();
-    } catch {
-      // metrics write failure only drops the metric line
-    }
+  /**
+   * Storage failures never surface into the agent turn (#43): swallowed here.
+   * Appends and retention trims are serialized on one promise chain so a
+   * concurrent turn end (e.g. primary + subagent sessions) can never have a
+   * trim's read-modify-write overwrite a line appended by another turn.
+   */
+  append(turn: CompletedTurn): Promise<void> {
+    const run = this.chain.then(async () => {
+      try {
+        await mkdir(dirname(this.path), { recursive: true });
+        await appendFile(this.path, `${JSON.stringify(toStoredTurn(turn))}\n`, {
+          encoding: "utf8",
+          mode: 0o600,
+        });
+        await this.trimIfNeeded();
+      } catch {
+        // metrics write failure only drops the metric line
+      }
+    });
+    this.chain = run.catch(() => undefined);
+    return run;
   }
 
   private async trimIfNeeded(): Promise<void> {
