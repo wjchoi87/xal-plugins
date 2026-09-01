@@ -16,15 +16,21 @@ import {
   type ThinkingOptions,
 } from "./types";
 
-/* Whether a model supports thinking mode. GLM text and coding models expose a
- * thinking switch; lightweight `-flash` models and image/video generators do
- * not. When unknown we leave it undefined so Xal treats the model as
- * non-thinking. */
+/* Whether a model supports thinking mode.
+ *
+ * Policy change:
+ * - before: GLM `-flash` models were excluded from thinking (only
+ *   flashx/flash-x kept it); other GLM text models offered the switch
+ * - after: every GLM text/coding model — including `-flash` variants —
+ *   offers the thinking switch; image/video/OCR generators stay excluded
+ * - reason: verified live against the Coding Plan endpoint on 2026-09 —
+ *   glm-5.3-flash and glm-4.5-flash both accept `reasoning_effort` and
+ *   return `reasoning_content`, so the flash exclusion was wrong
+ * - scope: all GLM flash models in the catalog gain the `/thinking`
+ *   control; Xal then sends `reasoning_effort` on their requests */
 function thinkingFor(id: string): ThinkingOptions | undefined {
   const lower = id.toLowerCase();
   if (/^(?:cogview|cogvideo|glm-ocr)/.test(lower)) return undefined;
-  if (/\bflash\b/.test(lower) && !/flashx|flash-x/.test(lower))
-    return undefined;
   if (!lower.startsWith("glm-")) return undefined;
   return { options: ["none", "low", "medium", "high", "max"], default: "high" };
 }
