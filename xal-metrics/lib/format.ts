@@ -48,3 +48,8 @@ export function formatTps(tps: number): string {
 export function formatPercent(rate: number): string {
   return String(Math.round(rate * 100));
 }
+
+/** Detail-view percent with one decimal, e.g. 88.6 / 94.0 (zero padded). */
+export function formatPercentDetail(rate: number, fractionDigits = 1): string {
+  return (rate * 100).toFixed(fractionDigits);
+}

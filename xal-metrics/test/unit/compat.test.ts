@@ -5,10 +5,11 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import plugin, { metricsHook } from "../../plugin";
+import { ContextGcMetricsReader } from "../../integrations/context-gc";
 import { MetricsCollector } from "../../metrics/collector";
 import type { Command, Hook, PluginContext } from "../../types";
 import { fakeClock, session } from "./helpers";
@@ -60,14 +61,17 @@ describe("legacy compatibility (#36)", () => {
     expect(typeof hook.stream).toBe("function");
   });
 
-  test("legacy turn flow collects base metrics without touching stream", () => {
+  test("legacy turn flow collects base metrics without touching stream", async () => {
     const clock = fakeClock();
     const collector = new MetricsCollector({ clock });
     const hook = metricsHook(collector, undefined);
     const signal = new AbortController().signal;
     const sessionA = session();
 
-    hook.prompt?.({ text: "hi", imageCount: 0 }, { session: sessionA, signal });
+    await hook.prompt?.(
+      { text: "hi", imageCount: 0 },
+      { session: sessionA, signal },
+    );
     clock.advance(6400);
     const completed = collector.finish("session-a", {
       totalInputTokens: 18_200,
@@ -101,21 +105,24 @@ describe("legacy compatibility (#36)", () => {
       { text: "hi", imageCount: 0 },
       { session: session(), signal },
     );
-    expect(result).toBeUndefined();
+    await expect(Promise.resolve(result)).resolves.toBeUndefined();
     const ended = hook.turnEnd?.({}, { session: session(), signal });
     await expect(Promise.resolve(ended)).resolves.toBeUndefined();
   });
 });
 
 describe("stream-enabled compatibility (#37)", () => {
-  test("the registered hook exercises the stream field and enhanced metrics flow", () => {
+  test("the registered hook exercises the stream field and enhanced metrics flow", async () => {
     const clock = fakeClock();
     const collector = new MetricsCollector({ clock });
     const hook = metricsHook(collector, undefined);
     const signal = new AbortController().signal;
     const sessionA = session();
 
-    hook.prompt?.({ text: "hi", imageCount: 0 }, { session: sessionA, signal });
+    await hook.prompt?.(
+      { text: "hi", imageCount: 0 },
+      { session: sessionA, signal },
+    );
     clock.advance(1300);
     hook.stream?.(
       { event: { type: "text_delta", text: "x" } },
@@ -131,5 +138,209 @@ describe("stream-enabled compatibility (#37)", () => {
     expect(completed).toBeDefined();
     expect(completed!.firstTextAt).toBe(1300);
     expect(completed!.generationMs).toBe(8577);
+  });
+});
+
+describe("Context GC integration through hooks (#26, #25)", () => {
+  const statsFor = (overrides: Record<string, unknown> = {}) => ({
+    version: 1,
+    sessionId: "session-a",
+    updatedAt: 1_700_000_000_000,
+    observedBytes: 84_192,
+    emittedBytes: 12_697,
+    reclaimedBytes: 71_495,
+    outputsObserved: 12,
+    outputsPaged: 3,
+    outputsKeptRaw: 9,
+    pagesCreated: 3,
+    duplicateHits: 1,
+    recalls: 1,
+    failOpenCount: 0,
+    storeFailures: 0,
+    ...overrides,
+  });
+
+  test("no stats file -> turn completes without error and without GC metrics", async () => {
+    const { home } = mockContext();
+    const clock = fakeClock();
+    const collector = new MetricsCollector({ clock });
+    const hook = metricsHook(
+      collector,
+      undefined,
+      new ContextGcMetricsReader(home),
+    );
+    const signal = new AbortController().signal;
+    const sessionA = session();
+
+    await hook.prompt?.(
+      { text: "hi", imageCount: 0 },
+      { session: sessionA, signal },
+    );
+    clock.advance(6400);
+    await hook.turnEnd?.(
+      { usage: { totalInputTokens: 100 }, context: {} },
+      { session: sessionA, signal },
+    );
+
+    const turn = collector.lastTurn("session-a");
+    expect(turn!.totalInputTokens).toBe(100);
+    expect(turn!.gcObservedBytes).toBeUndefined();
+  });
+
+  test("GC metrics derive from stats snapshots only, never from hook ordering", async () => {
+    const { home } = mockContext();
+    const statsDir = join(home, "context-gc", "stats");
+    mkdirSync(statsDir, { recursive: true });
+    const statsPath = join(statsDir, "session-a.json");
+
+    // Whether xal-context-gc's afterTool ran before or after metrics, the
+    // metrics result is the stats snapshot delta — metrics never reads
+    // afterTool output to infer Context GC savings (#26).
+    writeFileSync(statsPath, JSON.stringify(statsFor()), "utf8");
+
+    const clock = fakeClock();
+    const collector = new MetricsCollector({ clock });
+    const hook = metricsHook(
+      collector,
+      undefined,
+      new ContextGcMetricsReader(home),
+    );
+    const signal = new AbortController().signal;
+    const sessionA = session();
+
+    await hook.prompt?.(
+      { text: "hi", imageCount: 0 },
+      { session: sessionA, signal },
+    );
+    clock.advance(6400);
+    writeFileSync(
+      statsPath,
+      JSON.stringify(
+        statsFor({
+          observedBytes: 95_000,
+          emittedBytes: 16_000,
+          reclaimedBytes: 79_000,
+          outputsPaged: 4,
+          recalls: 2,
+        }),
+      ),
+      "utf8",
+    );
+    await hook.turnEnd?.(
+      {
+        usage: { totalInputTokens: 243_210 },
+        context: { totalInputTokens: 118_440 },
+      },
+      { session: sessionA, signal },
+    );
+
+    const turn = collector.lastTurn("session-a");
+    expect(turn!.totalInputTokens).toBe(243_210);
+    expect(turn!.contextInputTokens).toBe(118_440);
+    expect(turn!.gcObservedBytes).toBe(10_808);
+    expect(turn!.gcEmittedBytes).toBe(3_303);
+    expect(turn!.gcReclaimedBytes).toBe(7_505);
+    expect(turn!.gcPagedOutputs).toBe(1);
+    expect(turn!.gcRecalls).toBe(1);
+  });
+
+  test("malformed stats never fail the agent turn", async () => {
+    const { home } = mockContext();
+    const statsDir = join(home, "context-gc", "stats");
+    mkdirSync(statsDir, { recursive: true });
+    writeFileSync(join(statsDir, "session-a.json"), "{bad json", "utf8");
+
+    const clock = fakeClock();
+    const collector = new MetricsCollector({ clock });
+    const hook = metricsHook(
+      collector,
+      undefined,
+      new ContextGcMetricsReader(home),
+    );
+    const signal = new AbortController().signal;
+    const sessionA = session();
+
+    await hook.prompt?.(
+      { text: "hi", imageCount: 0 },
+      { session: sessionA, signal },
+    );
+    clock.advance(100);
+    await hook.turnEnd?.(
+      { usage: { totalInputTokens: 50 } },
+      { session: sessionA, signal },
+    );
+
+    const turn = collector.lastTurn("session-a");
+    expect(turn!.totalInputTokens).toBe(50);
+    expect(turn!.gcObservedBytes).toBeUndefined();
+  });
+
+  test("turns in separate sessions use separate stats files", async () => {
+    const { home } = mockContext();
+    const statsDir = join(home, "context-gc", "stats");
+    mkdirSync(statsDir, { recursive: true });
+    writeFileSync(
+      join(statsDir, "session-a.json"),
+      JSON.stringify(statsFor()),
+      "utf8",
+    );
+    writeFileSync(
+      join(statsDir, "session-b.json"),
+      JSON.stringify(
+        statsFor({
+          observedBytes: 5_000,
+          emittedBytes: 500,
+          reclaimedBytes: 4_500,
+        }),
+      ),
+      "utf8",
+    );
+
+    const clock = fakeClock();
+    const collector = new MetricsCollector({ clock });
+    const hook = metricsHook(
+      collector,
+      undefined,
+      new ContextGcMetricsReader(home),
+    );
+    const signal = new AbortController().signal;
+
+    await hook.prompt?.(
+      { text: "hi", imageCount: 0 },
+      { session: session("session-a"), signal },
+    );
+    await hook.prompt?.(
+      { text: "hi", imageCount: 0 },
+      {
+        session: session("session-b", { kind: "subagent" }),
+        signal,
+      },
+    );
+    writeFileSync(
+      join(statsDir, "session-a.json"),
+      JSON.stringify(statsFor({ observedBytes: 95_000 })),
+      "utf8",
+    );
+    writeFileSync(
+      join(statsDir, "session-b.json"),
+      JSON.stringify(
+        statsFor({
+          observedBytes: 9_000,
+          emittedBytes: 900,
+          reclaimedBytes: 8_100,
+        }),
+      ),
+      "utf8",
+    );
+    await hook.turnEnd?.({}, { session: session("session-a"), signal });
+    await hook.turnEnd?.(
+      {},
+      { session: session("session-b", { kind: "subagent" }), signal },
+    );
+
+    const turnA = collector.lastTurn("session-a");
+    const turnB = collector.lastTurn("session-b");
+    expect(turnA!.gcObservedBytes).toBe(10_808);
+    expect(turnB!.gcObservedBytes).toBe(4_000);
   });
 });

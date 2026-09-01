@@ -53,6 +53,69 @@ describe("toStoredTurn (#30)", () => {
     expect(stored.inputTokens).toBe(0);
     expect(stored.outputTokens).toBe(138);
   });
+
+  test("context and GC fields are persisted when present", () => {
+    const clock = fakeClock();
+    const collector = new MetricsCollector({ clock });
+    collector.start(session(), {
+      observedBytes: 1_000,
+      emittedBytes: 100,
+      reclaimedBytes: 900,
+      outputsPaged: 1,
+      duplicateHits: 0,
+      recalls: 0,
+      failOpenCount: 0,
+    });
+    const turn = collector.finish(
+      "session-a",
+      { totalInputTokens: 243_210, outputTokens: 1_203 },
+      {
+        totalInputTokens: 118_440,
+        cacheReadInputTokens: 111_302,
+        cacheWriteInputTokens: 4_801,
+      },
+      {
+        observedBytes: 95_000,
+        emittedBytes: 16_000,
+        reclaimedBytes: 79_000,
+        outputsPaged: 4,
+        duplicateHits: 1,
+        recalls: 1,
+        failOpenCount: 1,
+      },
+    )!;
+
+    const stored = toStoredTurn(turn);
+    expect(stored.contextInputTokens).toBe(118_440);
+    expect(stored.contextCacheReadTokens).toBe(111_302);
+    expect(stored.contextCacheWriteTokens).toBe(4_801);
+    expect(stored.gcObservedBytes).toBe(94_000);
+    expect(stored.gcReclaimedBytes).toBe(78_100);
+    expect(stored.gcPagedOutputs).toBe(3);
+    expect(stored.gcRecalls).toBe(1);
+    expect(stored.gcFailOpen).toBe(1);
+    expect(stored.contextOutputTokens).toBeUndefined();
+  });
+
+  test("old records without new fields stay backward compatible", () => {
+    const legacy = {
+      sessionId: "session-a",
+      provider: "anthropic",
+      model: "claude-x",
+      inputTokens: 18_200,
+      outputTokens: 621,
+      turnDurationMs: 6400,
+    };
+    const parsed = toStoredTurn(
+      collectorTurn({ totalInputTokens: 18_200, outputTokens: 621 })!,
+    );
+    expect(parsed.sessionId).toBe("session-a");
+    // No context/GC keys on a turn without context/GC data:
+    const raw = JSON.parse(JSON.stringify(parsed)) as Record<string, unknown>;
+    expect("contextInputTokens" in raw).toBe(false);
+    expect("gcObservedBytes" in raw).toBe(false);
+    expect(legacy.inputTokens).toBe(18_200);
+  });
 });
 
 describe("MetricsWriter (#29–32, #43)", () => {

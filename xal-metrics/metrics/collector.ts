@@ -9,7 +9,7 @@
  * display timestamps.
  */
 
-import { applyUsage } from "./usage";
+import { applyContextUsage, applyUsage } from "./usage";
 import {
   freshStreamState,
   applyStreamEvent,
@@ -17,6 +17,11 @@ import {
   type StreamState,
 } from "./stream";
 import { mergeToolStat, ToolTracker, type ToolStat } from "./tools";
+import {
+  diffGc,
+  type GcSnapshot,
+  type TurnGcMetrics,
+} from "../integrations/context-gc";
 import type { HookSession, StreamEvent, Usage } from "../types";
 
 export interface TurnMetrics {
@@ -36,6 +41,19 @@ export interface TurnMetrics {
   outputTokens?: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  /** Latest provider round usage (turnEnd.context), not the turn aggregate. */
+  contextInputTokens?: number;
+  contextCacheReadTokens?: number;
+  contextCacheWriteTokens?: number;
+  contextOutputTokens?: number;
+  /** Per-turn Context GC deltas (byte reduction before output enters history). */
+  gcObservedBytes?: number;
+  gcEmittedBytes?: number;
+  gcReclaimedBytes?: number;
+  gcPagedOutputs?: number;
+  gcDedupHits?: number;
+  gcRecalls?: number;
+  gcFailOpen?: number;
   toolCount: number;
   toolDurationMs: number;
   toolStats: ToolStat[];
@@ -70,6 +88,7 @@ interface ActiveTurn {
   turn: TurnMetrics;
   stream: StreamState;
   tools: ToolTracker;
+  gcStart?: GcSnapshot;
 }
 
 export class MetricsCollector {
@@ -86,7 +105,12 @@ export class MetricsCollector {
       options.stallThresholdMs ?? DEFAULT_STALL_THRESHOLD_MS;
   }
 
-  start(session: HookSession): void {
+  /**
+   * Starts a turn. `gcStart` is the Context GC cumulative snapshot read at the
+   * prompt hook; turn GC metrics are derived from its delta against the
+   * snapshot read at turn end (#10).
+   */
+  start(session: HookSession, gcStart?: GcSnapshot): void {
     this.active.set(session.id, {
       turn: {
         sessionId: session.id,
@@ -101,6 +125,7 @@ export class MetricsCollector {
       },
       stream: freshStreamState(),
       tools: new ToolTracker(),
+      gcStart,
     });
   }
 
@@ -136,14 +161,26 @@ export class MetricsCollector {
     );
   }
 
+  /**
+   * Completes a turn. `usage` is the whole-turn aggregate from turnEnd.usage,
+   * `context` is the latest provider round usage from turnEnd.context, kept
+   * separate so the current context footprint can never be confused with the
+   * turn aggregate (#3, #4). `gcEnd` is the Context GC snapshot read at turn
+   * end; the per-turn delta is computed against the turn-start snapshot.
+   */
   finish(
     sessionId: string,
     usage: Usage | undefined,
+    context: Usage | undefined = undefined,
+    gcEnd?: GcSnapshot,
   ): CompletedTurn | undefined {
     const activeTurn = this.active.get(sessionId);
     if (!activeTurn) return undefined;
     this.active.delete(sessionId);
     applyUsage(activeTurn.turn, usage);
+    applyContextUsage(activeTurn.turn, context);
+    const gcDelta = diffGc(activeTurn.gcStart, gcEnd);
+    if (gcDelta) applyTurnGc(activeTurn.turn, gcDelta);
     closeOpenRound(activeTurn.turn, activeTurn.stream, this.clock.now());
     const now = this.clock.now();
     const completed: CompletedTurn = {
@@ -169,4 +206,16 @@ export class MetricsCollector {
     }
     return undefined;
   }
+}
+
+/** Maps per-turn GC deltas onto the persistent TurnMetrics field names. */
+function applyTurnGc(turn: TurnMetrics, gc: TurnGcMetrics): void {
+  if (gc.observedBytes !== undefined) turn.gcObservedBytes = gc.observedBytes;
+  if (gc.emittedBytes !== undefined) turn.gcEmittedBytes = gc.emittedBytes;
+  if (gc.reclaimedBytes !== undefined)
+    turn.gcReclaimedBytes = gc.reclaimedBytes;
+  if (gc.outputsPaged !== undefined) turn.gcPagedOutputs = gc.outputsPaged;
+  if (gc.duplicateHits !== undefined) turn.gcDedupHits = gc.duplicateHits;
+  if (gc.recalls !== undefined) turn.gcRecalls = gc.recalls;
+  if (gc.failOpen !== undefined) turn.gcFailOpen = gc.failOpen;
 }

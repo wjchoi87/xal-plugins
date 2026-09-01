@@ -1,11 +1,27 @@
 import { describe, expect, test } from "bun:test";
-import { applyUsage, cacheCoverage, hasCacheUse } from "../../metrics/usage";
+import {
+  applyContextUsage,
+  applyUsage,
+  cacheCoverage,
+  contextCacheCoverage,
+  hasCacheUse,
+  hasContextUsage,
+} from "../../metrics/usage";
 import type { TurnMetrics } from "../../metrics/collector";
 
-function turn(): Pick<
+type UsageFields = Pick<
   TurnMetrics,
-  "totalInputTokens" | "outputTokens" | "cacheReadTokens" | "cacheWriteTokens"
-> & { stalls: number[] } {
+  | "totalInputTokens"
+  | "outputTokens"
+  | "cacheReadTokens"
+  | "cacheWriteTokens"
+  | "contextInputTokens"
+  | "contextCacheReadTokens"
+  | "contextCacheWriteTokens"
+  | "contextOutputTokens"
+>;
+
+function turn(): UsageFields & { stalls: number[] } {
   return { stalls: [] };
 }
 
@@ -80,5 +96,81 @@ describe("hasCacheUse", () => {
     expect(hasCacheUse({ cacheReadTokens: 0 })).toBe(true);
     expect(hasCacheUse({ cacheWriteTokens: 0 })).toBe(true);
     expect(hasCacheUse({})).toBe(false);
+  });
+});
+
+describe("applyContextUsage (#3, #4, #24)", () => {
+  test("stores context fields separately from turn usage", () => {
+    const access = turn();
+    applyUsage(access, {
+      totalInputTokens: 243_210,
+      outputTokens: 1_203,
+      cacheReadInputTokens: 215_420,
+      cacheWriteInputTokens: 22_310,
+    });
+    applyContextUsage(access, {
+      totalInputTokens: 118_440,
+      outputTokens: 55,
+      cacheReadInputTokens: 111_302,
+      cacheWriteInputTokens: 4_801,
+    });
+
+    expect(access.totalInputTokens).toBe(243_210);
+    expect(access.contextInputTokens).toBe(118_440);
+    expect(access.cacheReadTokens).toBe(215_420);
+    expect(access.contextCacheReadTokens).toBe(111_302);
+    expect(access.cacheWriteTokens).toBe(22_310);
+    expect(access.contextCacheWriteTokens).toBe(4_801);
+    expect(access.outputTokens).toBe(1_203);
+    expect(access.contextOutputTokens).toBe(55);
+  });
+
+  test("undefined context usage leaves context fields untouched", () => {
+    const access = turn();
+    applyContextUsage(access, undefined);
+    expect(access.contextInputTokens).toBeUndefined();
+  });
+
+  test("undefined fields are not written, zero is preserved", () => {
+    const access = turn();
+    applyContextUsage(access, { totalInputTokens: 0 });
+    expect(access.contextInputTokens).toBe(0);
+    expect(access.contextCacheReadTokens).toBeUndefined();
+  });
+});
+
+describe("contextCacheCoverage (#24)", () => {
+  test("context cache read divided by context input", () => {
+    expect(
+      contextCacheCoverage({
+        contextInputTokens: 118_440,
+        contextCacheReadTokens: 111_302,
+      }),
+    ).toBeCloseTo(0.9397, 3);
+  });
+
+  test("unavailable fields yield no coverage", () => {
+    expect(contextCacheCoverage({})).toBeUndefined();
+    expect(contextCacheCoverage({ contextInputTokens: 100 })).toBeUndefined();
+    expect(
+      contextCacheCoverage({ contextCacheReadTokens: 100 }),
+    ).toBeUndefined();
+  });
+
+  test("coverage above 1 is rejected", () => {
+    expect(
+      contextCacheCoverage({
+        contextInputTokens: 100,
+        contextCacheReadTokens: 150,
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe("hasContextUsage (#24)", () => {
+  test("true when any context field is present", () => {
+    expect(hasContextUsage({ contextInputTokens: 0 })).toBe(true);
+    expect(hasContextUsage({ contextOutputTokens: 0 })).toBe(true);
+    expect(hasContextUsage({})).toBe(false);
   });
 });

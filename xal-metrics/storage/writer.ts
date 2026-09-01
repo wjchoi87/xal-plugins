@@ -42,6 +42,17 @@ export interface StoredTurn {
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
   cacheHitRate?: number;
+  contextInputTokens?: number;
+  contextCacheReadTokens?: number;
+  contextCacheWriteTokens?: number;
+  contextOutputTokens?: number;
+  gcObservedBytes?: number;
+  gcEmittedBytes?: number;
+  gcReclaimedBytes?: number;
+  gcPagedOutputs?: number;
+  gcDedupHits?: number;
+  gcRecalls?: number;
+  gcFailOpen?: number;
   toolCount?: number;
   toolDurationMs?: number;
   stallCount?: number;
@@ -85,6 +96,35 @@ export function toStoredTurn(turn: CompletedTurn): StoredTurn {
     ...(coverage !== undefined
       ? { cacheHitRate: Number(coverage.toFixed(4)) }
       : {}),
+    ...(turn.contextInputTokens !== undefined
+      ? { contextInputTokens: turn.contextInputTokens }
+      : {}),
+    ...(turn.contextCacheReadTokens !== undefined
+      ? { contextCacheReadTokens: turn.contextCacheReadTokens }
+      : {}),
+    ...(turn.contextCacheWriteTokens !== undefined
+      ? { contextCacheWriteTokens: turn.contextCacheWriteTokens }
+      : {}),
+    ...(turn.contextOutputTokens !== undefined
+      ? { contextOutputTokens: turn.contextOutputTokens }
+      : {}),
+    ...(turn.gcObservedBytes !== undefined
+      ? { gcObservedBytes: turn.gcObservedBytes }
+      : {}),
+    ...(turn.gcEmittedBytes !== undefined
+      ? { gcEmittedBytes: turn.gcEmittedBytes }
+      : {}),
+    ...(turn.gcReclaimedBytes !== undefined
+      ? { gcReclaimedBytes: turn.gcReclaimedBytes }
+      : {}),
+    ...(turn.gcPagedOutputs !== undefined
+      ? { gcPagedOutputs: turn.gcPagedOutputs }
+      : {}),
+    ...(turn.gcDedupHits !== undefined
+      ? { gcDedupHits: turn.gcDedupHits }
+      : {}),
+    ...(turn.gcRecalls !== undefined ? { gcRecalls: turn.gcRecalls } : {}),
+    ...(turn.gcFailOpen !== undefined ? { gcFailOpen: turn.gcFailOpen } : {}),
     ...(turn.toolCount > 0 ? { toolCount: turn.toolCount } : {}),
     ...(turn.toolDurationMs > 0 ? { toolDurationMs: turn.toolDurationMs } : {}),
     ...(turn.stalls.length > 0 ? { stallCount: turn.stalls.length } : {}),

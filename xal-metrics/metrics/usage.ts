@@ -56,3 +56,63 @@ export function hasCacheUse(turn: {
     turn.cacheReadTokens !== undefined || turn.cacheWriteTokens !== undefined
   );
 }
+
+/*
+ * Context usage semantics.
+ *
+ * XAL's turnEnd.context is the usage of the latest provider round — much
+ * closer to the actual current model-facing context footprint at the end of
+ * the turn than turnEnd.usage, which aggregates every provider round in the
+ * turn (multiple rounds happen on tool loops). Context fields are kept under
+ * separate names so they can never be confused with the turn aggregates.
+ */
+
+export function applyContextUsage(
+  turn: Pick<
+    TurnMetrics,
+    | "contextInputTokens"
+    | "contextCacheReadTokens"
+    | "contextCacheWriteTokens"
+    | "contextOutputTokens"
+  >,
+  usage: Usage | undefined,
+): void {
+  if (!usage) return;
+  if (usage.totalInputTokens !== undefined)
+    turn.contextInputTokens = usage.totalInputTokens;
+  if (usage.cacheReadInputTokens !== undefined)
+    turn.contextCacheReadTokens = usage.cacheReadInputTokens;
+  if (usage.cacheWriteInputTokens !== undefined)
+    turn.contextCacheWriteTokens = usage.cacheWriteInputTokens;
+  if (usage.outputTokens !== undefined)
+    turn.contextOutputTokens = usage.outputTokens;
+}
+
+export function contextCacheCoverage(turn: {
+  contextCacheReadTokens?: number;
+  contextInputTokens?: number;
+}): number | undefined {
+  if (
+    turn.contextCacheReadTokens === undefined ||
+    turn.contextInputTokens === undefined
+  )
+    return undefined;
+  if (turn.contextInputTokens <= 0) return undefined;
+  const coverage = turn.contextCacheReadTokens / turn.contextInputTokens;
+  if (coverage > 1) return undefined;
+  return coverage;
+}
+
+export function hasContextUsage(turn: {
+  contextInputTokens?: number;
+  contextCacheReadTokens?: number;
+  contextCacheWriteTokens?: number;
+  contextOutputTokens?: number;
+}): boolean {
+  return (
+    turn.contextInputTokens !== undefined ||
+    turn.contextCacheReadTokens !== undefined ||
+    turn.contextCacheWriteTokens !== undefined ||
+    turn.contextOutputTokens !== undefined
+  );
+}

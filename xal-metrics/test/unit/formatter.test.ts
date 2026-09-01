@@ -1,12 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import { formatDuration, formatTokens, formatTps } from "../../lib/format";
 import { MetricsCollector } from "../../metrics/collector";
-import { formatCompact } from "../../metrics/formatter";
+import { formatCompact, formatDetail } from "../../metrics/formatter";
 import { fakeClock, session } from "./helpers";
-import type { StreamEvent } from "../../types";
+import type { GcSnapshot } from "../../integrations/context-gc";
+import type { StreamEvent, Usage } from "../../types";
 
 const text = (): StreamEvent => ({ type: "text_delta", text: "x" });
 const done = (): StreamEvent => ({ type: "done" });
+
+const gc = (overrides: Partial<GcSnapshot> = {}): GcSnapshot => ({
+  observedBytes: 1_000,
+  emittedBytes: 100,
+  reclaimedBytes: 900,
+  outputsPaged: 1,
+  duplicateHits: 0,
+  recalls: 0,
+  failOpenCount: 0,
+  ...overrides,
+});
 
 function legacyTurn(
   tokens?: { input: number; output: number },
@@ -143,5 +155,198 @@ describe("number formatting (#24)", () => {
     expect(formatTps(72.428392)).toBe("72.4");
     expect(formatTps(621)).toBe("621");
     expect(formatTps(100.4)).toBe("100");
+  });
+});
+
+function fullTurn(opts: {
+  usage?: Usage;
+  context?: Usage;
+  gcStart?: GcSnapshot;
+  gcEnd?: GcSnapshot;
+}): NonNullable<ReturnType<MetricsCollector["finish"]>> {
+  const clock = fakeClock();
+  const collector = new MetricsCollector({ clock });
+  collector.start(session(), opts.gcStart);
+  clock.advance(6400);
+  return collector.finish("session-a", opts.usage, opts.context, opts.gcEnd)!;
+}
+
+describe("compact formatter ctx (#6, #24)", () => {
+  test("ctx uses contextInputTokens, distinct from turn input", () => {
+    const turn = fullTurn({
+      usage: { totalInputTokens: 243_210, outputTokens: 1_203 },
+      context: { totalInputTokens: 118_440 },
+    });
+    expect(formatCompact(turn)).toBe("6.4s · ctx 118K · in 243K · out 1.2K");
+  });
+
+  test("ctx is omitted when context is unavailable", () => {
+    const turn = fullTurn({
+      usage: { totalInputTokens: 18_200, outputTokens: 621 },
+    });
+    expect(formatCompact(turn)).toBe("6.4s · in 18.2K · out 621");
+  });
+
+  test("ctx appears before in/out and after duration", () => {
+    const turn = fullTurn({
+      usage: { totalInputTokens: 243_210, outputTokens: 1_203 },
+      context: { totalInputTokens: 118_440 },
+    });
+    const compact = formatCompact(turn)!;
+    expect(compact.indexOf("ctx")).toBeLessThan(compact.indexOf("in"));
+    expect(compact.indexOf("dur")).toBe(-1); // duration is the bare "6.4s"
+  });
+});
+
+describe("compact formatter GC savings (#13)", () => {
+  test("gc shows estimated reclaimed tokens when > 0", () => {
+    const turn = fullTurn({
+      usage: { totalInputTokens: 243_210, outputTokens: 1_203 },
+      context: { totalInputTokens: 118_440 },
+      gcStart: gc(),
+      gcEnd: gc({ reclaimedBytes: 1_800 }), // delta 900 bytes -> ~225 tokens
+    });
+    const compact = formatCompact(turn)!;
+    expect(compact).toContain("ctx 118K");
+    expect(compact).toContain("in 243K");
+    expect(compact).toContain("gc ~225");
+  });
+
+  test("gc is hidden when nothing was reclaimed", () => {
+    const turn = fullTurn({
+      usage: { totalInputTokens: 10 },
+      context: { totalInputTokens: 8 },
+    });
+    expect(formatCompact(turn)).not.toContain("gc");
+  });
+});
+
+describe("detail formatter cache labelling (#19, #23)", () => {
+  test("detail says Cache cov, never Cache hit", () => {
+    const turn = fullTurn({
+      usage: {
+        totalInputTokens: 18_284,
+        cacheReadInputTokens: 16_902,
+        cacheWriteInputTokens: 1_000,
+        outputTokens: 138,
+      },
+    });
+    const lines = formatDetail(turn!, 1);
+    expect(lines.some((line) => line.includes("Cache cov"))).toBe(true);
+    expect(lines.some((line) => line.includes("Cache hit"))).toBe(false);
+  });
+
+  test("old metrics record without cache still formats (#23)", () => {
+    const turn = fullTurn({ usage: { totalInputTokens: 5_000 } });
+    const lines = formatDetail(turn!, 1);
+    expect(lines.join("\n")).toContain("Turn usage");
+    expect(lines.join("\n")).toContain("Input");
+    expect(lines.some((line) => line.includes("Cache read"))).toBe(false);
+    expect(lines.some((line) => line.includes("Cache cov"))).toBe(false);
+  });
+});
+
+describe("detail formatter sections (#6, #24, #29)", () => {
+  test("turn usage and context sections render separately", () => {
+    const turn = fullTurn({
+      usage: {
+        totalInputTokens: 243_210,
+        outputTokens: 1_203,
+        cacheReadInputTokens: 215_420,
+        cacheWriteInputTokens: 22_310,
+      },
+      context: {
+        totalInputTokens: 118_440,
+        cacheReadInputTokens: 111_302,
+        cacheWriteInputTokens: 4_801,
+      },
+    });
+    const lines = formatDetail(turn!, 1).join("\n");
+    expect(lines).toContain("Turn usage");
+    expect(lines).toContain("Context");
+    expect(lines).toContain("  Cache read   215,420");
+    expect(lines).toContain("  Cache cov    88.6%");
+    expect(lines).toContain("  Cache read   111,302");
+    expect(lines).toContain("  Cache cov    94.0%");
+    expect(lines).toContain("\n  Input");
+    expect(lines).toContain("118,440");
+  });
+
+  test("context section is omitted entirely when unavailable", () => {
+    const turn = fullTurn({ usage: { totalInputTokens: 10 } });
+    const lines = formatDetail(turn!, 1);
+    expect(lines.includes("Context")).toBe(false);
+    expect(lines.includes("Context GC")).toBe(false);
+  });
+
+  test("compact ctx does not leak into detail context section", () => {
+    const turn = fullTurn({
+      usage: { totalInputTokens: 10_000, outputTokens: 100 },
+      context: { totalInputTokens: 7_000 },
+    });
+    const lines = formatDetail(turn!, 1);
+    expect(lines.includes("Context")).toBe(true);
+    expect(lines.includes("Turn usage")).toBe(true);
+  });
+});
+
+describe("detail formatter Context GC section (#14, #25)", () => {
+  test("renders estimated token savings and counters", () => {
+    const turn = fullTurn({
+      context: { totalInputTokens: 118_440 },
+      gcStart: gc(),
+      gcEnd: gc({
+        observedBytes: 2_000,
+        emittedBytes: 200,
+        reclaimedBytes: 1_800, // delta 900 bytes -> ~225 tokens
+        outputsPaged: 2,
+        recalls: 1,
+      }),
+    });
+    const lines = formatDetail(turn!, 1);
+    expect(lines.includes("Context GC")).toBe(true);
+    expect(lines.some((line) => line.includes("GC saved"))).toBe(true);
+    expect(lines.some((line) => line.includes("~225"))).toBe(true);
+    expect(lines.some((line) => line.includes("Without GC"))).toBe(true);
+    expect(lines.some((line) => line.includes("Paged"))).toBe(true);
+    expect(lines.some((line) => line.includes("Recalls"))).toBe(true);
+    expect(lines.some((line) => line.includes("Fail-open"))).toBe(false);
+  });
+
+  test("exact byte figures are not shown in the UI", () => {
+    const turn = fullTurn({
+      gcStart: gc(),
+      gcEnd: gc({ reclaimedBytes: 1_800 }),
+    });
+    const lines = formatDetail(turn!, 1);
+    expect(lines.some((line) => line.includes("Observed"))).toBe(false);
+    expect(lines.some((line) => line.includes("Emitted"))).toBe(false);
+    expect(lines.some((line) => line.includes("KB"))).toBe(false);
+  });
+
+  test("without-GC context adds estimated savings to current context", () => {
+    const turn = fullTurn({
+      usage: { totalInputTokens: 243_210, outputTokens: 1_203 },
+      context: { totalInputTokens: 118_440 },
+      gcStart: gc(),
+      gcEnd: gc({ reclaimedBytes: 1_800 }), // ~225 tokens saved
+    });
+    const lines = formatDetail(turn!, 1);
+    expect(lines.some((line) => line.includes("~118,665"))).toBe(true);
+  });
+
+  test("fail-open appears only when > 0", () => {
+    const turn = fullTurn({
+      gcStart: gc(),
+      gcEnd: gc({ failOpenCount: 1 }),
+    });
+    const lines = formatDetail(turn!, 1);
+    expect(lines.some((line) => line.includes("Fail-open"))).toBe(true);
+  });
+
+  test("no GC activity -> no GC section", () => {
+    const turn = fullTurn({ usage: { totalInputTokens: 5 } });
+    const lines = formatDetail(turn!, 1);
+    expect(lines.includes("Context GC")).toBe(false);
   });
 });

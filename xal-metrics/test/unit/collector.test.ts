@@ -1,6 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { MetricsCollector } from "../../metrics/collector";
+import type { GcSnapshot } from "../../integrations/context-gc";
 import { fakeClock, session } from "./helpers";
+
+const gc = (overrides: Partial<GcSnapshot> = {}): GcSnapshot => ({
+  observedBytes: 84_192,
+  emittedBytes: 12_697,
+  reclaimedBytes: 71_495,
+  outputsPaged: 3,
+  duplicateHits: 1,
+  recalls: 1,
+  failOpenCount: 0,
+  ...overrides,
+});
 
 describe("MetricsCollector legacy flow", () => {
   test("start -> finish records turn duration and usage", () => {
@@ -133,5 +145,128 @@ describe("MetricsCollector concurrent sessions (#39)", () => {
     expect(subDone!.toolDurationMs).toBe(900);
     expect(subDone!.completedAt).toBe(1500);
     expect(collector.history()).toHaveLength(2);
+  });
+});
+
+describe("MetricsCollector context usage (#3, #4)", () => {
+  test("stores turnEnd.context separately from turnEnd.usage", () => {
+    const collector = new MetricsCollector({ clock: fakeClock() });
+    collector.start(session());
+    const completed = collector.finish(
+      "session-a",
+      { totalInputTokens: 243_210, cacheReadInputTokens: 215_420 },
+      { totalInputTokens: 118_440, cacheReadInputTokens: 111_302 },
+    );
+
+    expect(completed!.totalInputTokens).toBe(243_210);
+    expect(completed!.cacheReadTokens).toBe(215_420);
+    expect(completed!.contextInputTokens).toBe(118_440);
+    expect(completed!.contextCacheReadTokens).toBe(111_302);
+  });
+
+  test("turn usage and context usage are never mixed", () => {
+    const collector = new MetricsCollector({ clock: fakeClock() });
+    collector.start(session());
+    const completed = collector.finish(
+      "session-a",
+      { outputTokens: 1_203 },
+      { totalInputTokens: 10 },
+    );
+
+    expect(completed!.outputTokens).toBe(1_203);
+    expect(completed!.contextOutputTokens).toBeUndefined();
+    expect(completed!.totalInputTokens).toBeUndefined();
+    expect(completed!.contextInputTokens).toBe(10);
+  });
+
+  test("missing context keeps context fields absent", () => {
+    const collector = new MetricsCollector({ clock: fakeClock() });
+    collector.start(session());
+    const completed = collector.finish("session-a", { totalInputTokens: 5 });
+    expect(completed!.contextInputTokens).toBeUndefined();
+  });
+});
+
+describe("MetricsCollector Context GC deltas (#10, #12, #25)", () => {
+  test("start/end snapshots produce a per-turn delta", () => {
+    const clock = fakeClock();
+    const collector = new MetricsCollector({ clock });
+    collector.start(session(), gc());
+    clock.advance(1000);
+    const completed = collector.finish(
+      "session-a",
+      { totalInputTokens: 100 },
+      undefined,
+      gc({
+        observedBytes: 95_000,
+        emittedBytes: 16_000,
+        reclaimedBytes: 79_000,
+        outputsPaged: 4,
+        duplicateHits: 1,
+        recalls: 2,
+        failOpenCount: 0,
+      }),
+    );
+
+    expect(completed!.gcObservedBytes).toBe(10_808);
+    expect(completed!.gcEmittedBytes).toBe(3_303);
+    expect(completed!.gcReclaimedBytes).toBe(7_505);
+    expect(completed!.gcPagedOutputs).toBe(1);
+    expect(completed!.gcDedupHits).toBeUndefined(); // zero delta is no activity
+    expect(completed!.gcRecalls).toBe(1);
+    expect(completed!.gcFailOpen).toBeUndefined();
+  });
+
+  test("no GC snapshots -> no GC metrics at all", () => {
+    const collector = new MetricsCollector({ clock: fakeClock() });
+    collector.start(session());
+    const completed = collector.finish("session-a", {});
+    expect(completed!.gcObservedBytes).toBeUndefined();
+    expect(completed!.gcReclaimedBytes).toBeUndefined();
+  });
+
+  test("stats reset causing negative delta is ignored for that turn", () => {
+    const collector = new MetricsCollector({ clock: fakeClock() });
+    collector.start(session(), gc({ observedBytes: 100_000 }));
+    const completed = collector.finish(
+      "session-a",
+      {},
+      undefined,
+      gc({ observedBytes: 50_000 }),
+    );
+    expect(completed!.gcObservedBytes).toBeUndefined();
+    expect(completed!.gcRecalls).toBeUndefined();
+  });
+
+  test("zero-activity turn stays clean", () => {
+    const collector = new MetricsCollector({ clock: fakeClock() });
+    collector.start(session(), gc());
+    const completed = collector.finish("session-a", {}, undefined, gc());
+    expect(completed!.gcObservedBytes).toBeUndefined();
+  });
+
+  test("interleaved sessions use separate GC snapshots", () => {
+    const collector = new MetricsCollector({ clock: fakeClock() });
+    collector.start(session("primary"), gc());
+    collector.start(
+      session("sub", { kind: "subagent" }),
+      gc({ observedBytes: 1000, emittedBytes: 100, reclaimedBytes: 900 }),
+    );
+
+    const primaryDone = collector.finish(
+      "primary",
+      {},
+      undefined,
+      gc({ observedBytes: 95_000 }),
+    );
+    const subDone = collector.finish(
+      "sub",
+      {},
+      undefined,
+      gc({ observedBytes: 5000, emittedBytes: 500, reclaimedBytes: 4500 }),
+    );
+
+    expect(primaryDone!.gcObservedBytes).toBe(10_808);
+    expect(subDone!.gcObservedBytes).toBe(4_000);
   });
 });
