@@ -23,7 +23,7 @@ export async function connect(
       `this interface cannot securely enter a ${PROVIDER_NAME} API key`,
     );
   const entered = await ctx.askSecret(
-    `${PROVIDER_NAME} API key (from https://z.ai/manage-apikey/apikey-list)`,
+    `${PROVIDER_NAME} API key (GLM Coding Plan key, from https://z.ai/manage-apikey/apikey-list)`,
   );
   if (entered === undefined) return undefined;
   const key = entered.trim();
@@ -40,7 +40,7 @@ export async function connect(
       headers: {
         accept: "application/json",
         authorization: `Bearer ${key}`,
-        "user-agent": "xal-zai/0.1.0",
+        "user-agent": "xal-zai-coding-plan/0.1.0",
       },
     },
   );

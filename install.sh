@@ -9,7 +9,7 @@ PLUGINS=(
   "xal-commandcode-bridge:Command Code bridge"
   "xal-alibaba-token-plan:Alibaba token plan"
   "xal-opencode-free:OpenCode Free models"
-  "xal-zai:Z.ai GLM models"
+  "xal-zai-coding-plan:Z.ai GLM Coding Plan models"
   "xal-metrics:Per-turn timing and usage metrics"
   "xal-context-gc:Agent context memory paging"
 )

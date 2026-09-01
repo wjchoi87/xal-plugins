@@ -307,7 +307,7 @@ export async function* streamResponse(
         accept: "text/event-stream",
         "content-type": "application/json",
         authorization: `Bearer ${await apiKey(profileId)}`,
-        "user-agent": "xal-zai/0.1.0",
+        "user-agent": "xal-zai-coding-plan/0.1.0",
       },
       body,
       signal: request.signal,

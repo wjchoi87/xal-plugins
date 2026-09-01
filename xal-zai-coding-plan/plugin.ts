@@ -5,7 +5,7 @@ import { configureRuntime } from "./runtime";
 import type { Plugin } from "./types";
 
 const plugin: Plugin = {
-  name: "zai",
+  name: "zai-coding-plan",
   register(ctx) {
     configureRuntime(ctx.runtime);
     resolveBaseUrl(ctx.config);

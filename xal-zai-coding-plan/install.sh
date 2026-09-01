@@ -4,8 +4,8 @@ set -euo pipefail
 XAL_DIR="${XAL_HOME:-$HOME/.xal}"
 PLUGINS_DIR="$XAL_DIR/plugins"
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NAME="xal-zai"
-PLUGIN="zai"
+NAME="xal-zai-coding-plan"
+PLUGIN="zai-coding-plan"
 DEST_DIR="$PLUGINS_DIR/$NAME"
 CONFIG="$XAL_DIR/config.json"
 
@@ -23,20 +23,20 @@ if [ ! -f "$CONFIG" ]; then
   chmod 600 "$CONFIG"
 fi
 
-DEFAULT_URL="https://api.z.ai/api/paas/v4"
+DEFAULT_URL="https://api.z.ai/api/coding/paas/v4"
 KEEP_URL="$(python3 -c "
 import json, sys
 try:
     cfg = json.load(open(sys.argv[1]))
-    print(cfg.get('pluginConfig', {}).get('zai', {}).get('baseUrl', ''))
+    print(cfg.get('pluginConfig', {}).get('zai-coding-plan', {}).get('baseUrl', ''))
 except Exception:
     pass
 " "$CONFIG")" 2>/dev/null || true
 if [ -n "$KEEP_URL" ]; then
-  read -r -p "Z.ai base URL [keep: $KEEP_URL]: " BASE_URL || true
+  read -r -p "Z.ai Coding Plan base URL [keep: $KEEP_URL]: " BASE_URL || true
   BASE_URL="${BASE_URL:-$KEEP_URL}"
 else
-  read -r -p "Z.ai base URL [default: $DEFAULT_URL]: " BASE_URL || true
+  read -r -p "Z.ai Coding Plan base URL [default: $DEFAULT_URL]: " BASE_URL || true
   BASE_URL="${BASE_URL:-$DEFAULT_URL}"
 fi
 
@@ -61,4 +61,4 @@ PY
 
 echo ""
 echo "registered ./plugins/$NAME with baseUrl $BASE_URL in $CONFIG"
-echo "restart Xal, then run: xal connect zai"
+echo "restart Xal, then run: xal connect zai-coding-plan"

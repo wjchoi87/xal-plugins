@@ -1,10 +1,10 @@
-const DEFAULT_BASE_URL = "https://api.z.ai/api/paas/v4";
+const DEFAULT_BASE_URL = "https://api.z.ai/api/coding/paas/v4";
 
 let apiUrl = "";
 
-/* z.ai's public OpenAI-compatible endpoint is the default, so an explicit
- * config is not required. A configured value (e.g. a GLM Coding Plan
- * dedicated endpoint) still takes precedence. */
+/* z.ai's GLM Coding Plan OpenAI-compatible endpoint is the default, so an
+ * explicit config is not required. A configured value (e.g. the non-coding
+ * endpoint or a custom proxy) still takes precedence. */
 export function resolveBaseUrl(config: Record<string, unknown>): string {
   const raw = config.baseUrl;
   if (raw === undefined) {
@@ -12,7 +12,7 @@ export function resolveBaseUrl(config: Record<string, unknown>): string {
     return apiUrl;
   }
   if (typeof raw !== "string" || !raw.trim()) {
-    throw new Error("zai baseUrl must be a non-empty string");
+    throw new Error("zai-coding-plan baseUrl must be a non-empty string");
   }
   apiUrl = raw.trim();
   return apiUrl;

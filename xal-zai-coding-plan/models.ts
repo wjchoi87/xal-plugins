@@ -14,31 +14,19 @@ import {
   type ModelCatalog,
   type ModelInfo,
   type ThinkingOptions,
-  type ModelInputModality,
 } from "./types";
 
-/* Whether a model supports thinking mode. GLM text models and the vision (V)
- * models expose a thinking switch; the lightweight free `-flash` models and
- * image/video generators do not. When unknown we leave it undefined so Xal
- * treats the model as non-thinking. */
+/* Whether a model supports thinking mode. GLM text and coding models expose a
+ * thinking switch; lightweight `-flash` models and image/video generators do
+ * not. When unknown we leave it undefined so Xal treats the model as
+ * non-thinking. */
 function thinkingFor(id: string): ThinkingOptions | undefined {
   const lower = id.toLowerCase();
   if (/^(?:cogview|cogvideo|glm-ocr)/.test(lower)) return undefined;
-  const isFlash = /\bflash\b/.test(lower) && !/flashx|flash-x/.test(lower);
-  if (isFlash && !/glm-4\.6v/.test(lower)) return undefined;
+  if (/\bflash\b/.test(lower) && !/flashx|flash-x/.test(lower))
+    return undefined;
   if (!lower.startsWith("glm-")) return undefined;
   return { options: ["none", "low", "medium", "high", "max"], default: "high" };
-}
-
-/* Vision (V) models and the multimodal flash accept image input; text models
- * and generators are text-only. */
-function inputModalities(id: string): ModelInputModality[] {
-  const lower = id.toLowerCase();
-  if (/^(?:cogview|cogvideo)/.test(lower)) return ["text"];
-  if (/\bv\b/.test(lower) || /glm-5\.3-flash/.test(lower)) {
-    return ["text", "image"];
-  }
-  return ["text"];
 }
 
 /* Fill in the context window the endpoint never reports. Source precedence:
@@ -75,7 +63,7 @@ async function liveDiscover(profileId: string): Promise<ModelInfo[]> {
       headers: {
         accept: "application/json",
         authorization: `Bearer ${await apiKey(profileId)}`,
-        "user-agent": "xal-zai/0.1.0",
+        "user-agent": "xal-zai-coding-plan/0.1.0",
       },
     },
   );
@@ -99,7 +87,7 @@ async function liveDiscover(profileId: string): Promise<ModelInfo[]> {
     models.push({
       id,
       name: id,
-      inputModalities: inputModalities(id),
+      inputModalities: ["text"],
       ...(thinkingFor(id) ? { thinking: thinkingFor(id) } : {}),
     });
   }
@@ -123,9 +111,9 @@ export async function listModels(
   }
 }
 
-/* Prefer the flagship then the latest stable model when the catalog is
- * available; fall back to whichever model came back first. */
-const DEFAULT_PREFERENCE = ["glm-5.3-flash", "glm-5.3", "glm-4.7"];
+/* Prefer the newest coding-optimized GLM model when the catalog is available;
+ * fall back to whichever model came back first. */
+const DEFAULT_PREFERENCE = ["glm-5.3", "glm-5.2", "glm-4.7"];
 
 export async function defaultModel(profileId: string): Promise<string> {
   try {

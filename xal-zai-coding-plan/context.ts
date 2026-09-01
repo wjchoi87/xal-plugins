@@ -59,7 +59,9 @@ let fallbackContextWindow_: number | undefined;
 
 function readPositiveInteger(value: unknown, label: string): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
-    throw new Error(`zai ${label} must be a positive integer (tokens)`);
+    throw new Error(
+      `zai-coding-plan ${label} must be a positive integer (tokens)`,
+    );
   }
   return value;
 }
@@ -68,7 +70,7 @@ function parseOverrides(raw: unknown): ReadonlyMap<string, number> {
   if (raw === undefined) return new Map();
   if (!isRecord(raw)) {
     throw new Error(
-      "zai modelContextWindows must be an object mapping model IDs to token counts",
+      "zai-coding-plan modelContextWindows must be an object mapping model IDs to token counts",
     );
   }
   const map = new Map<string, number>();
