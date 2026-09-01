@@ -10,6 +10,7 @@ PLUGINS=(
   "xal-alibaba-token-plan:Alibaba token plan"
   "xal-opencode-free:OpenCode Free models"
   "xal-metrics:Per-turn timing and usage metrics"
+  "xal-context-gc:Agent context memory paging"
 )
 N=${#PLUGINS[@]}
 

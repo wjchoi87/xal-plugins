@@ -16,6 +16,8 @@ Each plugin is self-contained and needs no runtime dependency on Xal's source or
 
 [xal-metrics](xal-metrics) is also packaged here: a non-provider plugin that collects per-turn timing and usage metrics (turn duration, tokens, cache hit rate, tool timing, and — when the XAL runtime supports the stream hook — TTFT, TPS and stalls). It installs the same way and is viewable with `/metrics`.
 
+[xal-context-gc](xal-context-gc) is a non-provider plugin that pages large tool outputs out of model context (ingress GC): exact raw output is stored on disk and recalled on demand via the bounded `context_gc_recall` tool, preserving failure cores and exact deduplication while keeping the prompt prefix cache-stable. View session stats with `/context-gc`.
+
 ## Install
 
 Clone once, then run the installer and pick the plugins you need by number (comma/space separated, or Enter for all):
@@ -35,6 +37,7 @@ Select plugins to install. Type comma/space separated numbers, or Enter for all.
   4. xal-alibaba-token-plan     Alibaba token plan
   5. xal-opencode-free          OpenCode Free models
   6. xal-metrics                Per-turn timing and usage metrics
+  7. xal-context-gc             Agent context memory paging
 
 Selection [Enter = all]:
 ```
