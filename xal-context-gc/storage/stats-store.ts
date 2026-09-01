@@ -23,8 +23,23 @@ export interface ContextGcStats {
   sessionId: string;
   updatedAt: number;
 
+  /** Raw tool-output bytes seen by Context GC (all processed outputs). */
   observedBytes: number;
+  /**
+   * Bytes returned to XAL for outputs Context GC actually replaced
+   * (PAGE / KEEP_CORE / DEDUP_REF). NOT the final model-facing context
+   * size: KEEP_RAW outputs are not included here, so reading it next to
+   * observedBytes would understate context usage. Kept for the stats-file
+   * contract with xal-metrics; intentionally hidden from the default
+   * /context-gc summary (see commands.ts).
+   */
   emittedBytes: number;
+  /**
+   * Sum of max(0, observedBytes - emittedBytes) over modified outputs.
+   * reclaimedBytes / observedBytes is the fraction of observed
+   * tool-output bytes kept out of context — a byte metric, NOT a token
+   * savings estimate.
+   */
   reclaimedBytes: number;
 
   outputsObserved: number;

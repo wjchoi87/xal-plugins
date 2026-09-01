@@ -83,12 +83,46 @@ Modes:
 ## Commands
 
 ```text
-/context-gc                per-session stats (observed/emitted/reclaimed)
-/context-gc status         detailed view for the current session
+/context-gc                per-session stats summary
+/context-gc status         detailed view (including emitted bytes)
 /context-gc cleanup        conservative report — deletes nothing
 /context-gc cleanup <id>   destructive: deletes one session's pages after
                            typing the session id to confirm
 ```
+
+Example summary:
+
+```text
+Context GC
+
+observed      305 KiB
+reclaimed     57.1 KiB (18.7%)
+
+paged         3
+kept          60
+recalls       0
+```
+
+Read the numbers carefully:
+
+- `observed` — raw tool-output bytes Context GC saw (all processed outputs).
+- `reclaimed` — bytes kept out of context by GC-modified outputs.
+- `reclaimed / observed` is the fraction of observed tool-output bytes whose
+  context inflow was prevented. It is a **byte** metric — **not** a token
+  savings rate and **not** the total model-facing context size.
+- `emitted` (bytes returned to XAL for GC-modified outputs only) is a
+  debugging metric and is intentionally hidden from the summary; it is
+  available in `/context-gc status` and in the stats file.
+
+Zero-value lines (`dedup`, `fail-open`) are hidden from the summary.
+
+### Bytes vs tokens
+
+xal-context-gc owns exact byte accounting only. It never converts bytes to
+tokens. Actual model context-token changes (`contextInputTokens`, cache
+behavior) are measured by [xal-metrics](../xal-metrics) against real provider
+usage; the plugins are connected only through the cumulative stats file
+(`stats/<session-id>.json`), never through hook ordering.
 
 ## Storage layout
 

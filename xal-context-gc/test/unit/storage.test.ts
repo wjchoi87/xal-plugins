@@ -213,6 +213,19 @@ describe("stats persistence (#21)", () => {
     expect(snapshot.version).toBe(1);
   });
 
+  test("emittedBytes persists in the stats schema (backward compatible contract)", async () => {
+    const home = tempHome();
+    const root = join(home, "context-gc", "stats");
+    const stats = new StatsStore(root);
+    await stats.note("s1", { emittedBytes: 12_800, reclaimedBytes: 58_470 });
+
+    const rebooted = new StatsStore(root);
+    const snapshot = await rebooted.snapshot("s1");
+    expect(snapshot.emittedBytes).toBe(12_800);
+    expect(snapshot.reclaimedBytes).toBe(58_470);
+    expect(snapshot.version).toBe(1);
+  });
+
   test("corrupted stats file restarts from zero", async () => {
     const home = tempHome();
     const root = join(home, "context-gc", "stats");

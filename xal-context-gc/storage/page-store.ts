@@ -244,11 +244,15 @@ export class PageStore {
   }
 }
 
+/**
+ * IEC byte formatting with a space before the unit ("305 KiB"). Shared by
+ * the /context-gc UI and model-facing descriptor tags for consistent units.
+ */
 export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024) return `${bytes} B`;
   const kb = bytes / 1024;
-  if (kb < 1024) return `${kb >= 100 ? kb.toFixed(0) : kb.toFixed(1)}KiB`;
-  return `${(kb / 1024).toFixed(1)}MiB`;
+  if (kb < 1024) return `${kb >= 100 ? kb.toFixed(0) : kb.toFixed(1)} KiB`;
+  return `${(kb / 1024).toFixed(1)} MiB`;
 }
 
 export interface PageDraft {
