@@ -11,6 +11,7 @@ Provider plugins for [Xal](https://github.com/xal-sh/xal). OpenAI-compatible end
 | [xal-commandcode-bridge](xal-commandcode-bridge) | Command Code bridge  | API key | `http://localhost:8000/v1` (default)  |
 | [xal-alibaba-token-plan](xal-alibaba-token-plan) | Alibaba token plan   | API key | required — set during install         |
 | [xal-opencode-free](xal-opencode-free)           | OpenCode Free        | API key | `https://opencode.ai/zen/v1` (fixed)  |
+| [xal-zai](xal-zai)                               | Z.ai GLM             | API key | `https://api.z.ai/api/paas/v4` (default) |
 
 Each plugin is self-contained and needs no runtime dependency on Xal's source or on the other plugins.
 
@@ -36,8 +37,9 @@ Select plugins to install. Type comma/space separated numbers, or Enter for all.
   3. xal-commandcode-bridge     Command Code bridge
   4. xal-alibaba-token-plan     Alibaba token plan
   5. xal-opencode-free          OpenCode Free models
-  6. xal-metrics                Per-turn timing and usage metrics
-  7. xal-context-gc             Agent context memory paging
+  6. xal-zai                    Z.ai GLM models
+  7. xal-metrics                Per-turn timing and usage metrics
+  8. xal-context-gc             Agent context memory paging
 
 Selection [Enter = all]:
 ```
@@ -58,6 +60,7 @@ xal connect litellm                 # paste the proxy API key (Enter to skip)
 xal connect commandcode-bridge      # paste the bridge API key
 xal connect alibaba-token-plan      # paste the plan API key
 xal connect opencode-free           # paste the OpenCode API key
+xal connect zai                     # paste the Z.ai API key
 ```
 
 ## Requirements

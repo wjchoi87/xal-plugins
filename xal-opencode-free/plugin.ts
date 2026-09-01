@@ -1,4 +1,5 @@
 import { resolveConfig } from "./config";
+import { configureContext } from "./context";
 import { debugCommand } from "./command";
 import { openCodeFreeProvider } from "./provider";
 import { configureRuntime } from "./runtime";
@@ -9,6 +10,7 @@ const plugin: Plugin = {
   register(ctx) {
     configureRuntime(ctx.runtime);
     resolveConfig(ctx.config);
+    configureContext(ctx.config);
     ctx.registerProvider(openCodeFreeProvider);
     ctx.registerCommand(debugCommand);
   },

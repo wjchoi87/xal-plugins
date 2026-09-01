@@ -134,7 +134,11 @@ Defaults work with no configuration. Optional keys under `pluginConfig.opencode-
   "pluginConfig": {
     "opencode-free": {
       "cacheTtlMs": 600000,
-      "debugModels": false
+      "debugModels": false,
+      "modelContextWindows": {
+        "mimo-v2.5-free": 1000000
+      },
+      "defaultContextWindow": 131072
     }
   }
 }
@@ -142,6 +146,20 @@ Defaults work with no configuration. Optional keys under `pluginConfig.opencode-
 
 - `cacheTtlMs` — catalog freshness window (ms). Default `600000`.
 - `debugModels` — append dropped-model diagnostics to `/models` warnings.
+- `modelContextWindows` — exact model ID (upstream ID, no `zen/` prefix) → maximum context window in tokens. Overrides any catalog-provided value and the bundled table. Use this for models whose context the catalog doesn't report.
+- `defaultContextWindow` — fallback maximum for models unknown to the bundled table.
+
+### Context windows
+
+The catalog's `/models` response may omit a context length, so the plugin resolves each free model's context window to keep Xal's compaction, `/compaction-limit`, and `/context-window` working. Source precedence:
+
+1. `modelContextWindows` config override (exact upstream ID)
+2. a context length parsed from the catalog entry, if any (`context_window` / `context_length` / `contextWindow`)
+3. the bundled family table (e.g. `mimo-v2.5-free` → 1M, `deepseek-v4-*` → 128K)
+4. `defaultContextWindow` config fallback
+5. a conservative 128K catch-all so every exposed free model gets a budget
+
+The reported `contextWindow` is a budget capped at 256K by default, so auto-compaction engages at 80% of the budget. Models whose maximum exceeds the budget (e.g. 1M `mimo-v2.5-free`) additionally get a `contextWindows` ladder (`256K / 400K / 600K / 800K / maximum`) that enables `/context-window`.
 
 ## Debug
 

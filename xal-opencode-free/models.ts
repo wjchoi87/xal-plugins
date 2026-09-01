@@ -22,6 +22,13 @@ import {
   writeMergedCache,
   writeSourceCache,
 } from "./cache";
+import {
+  bundledContextWindowFor,
+  catchAllContextWindow,
+  configOverrideFor,
+  contextWindowsFor,
+  fallbackContextWindow,
+} from "./context";
 import { PROVIDER_NAME } from "./provider";
 import type { ModelCatalog, ModelInfo } from "./types";
 
@@ -67,15 +74,30 @@ function evaluateModels(
   return models.map((model) => ({ model, evaluation: evaluateFree(model) }));
 }
 
-function toModelInfo(model: NormalizedOpenCodeModel): ModelInfo {
+/* Fill in the context window the catalog may never report. Source precedence
+ * (see context.ts): config override, then a catalog-provided value, then the
+ * bundled family table, then `defaultContextWindow`, then a conservative
+ * catch-all so compaction always has a budget. */
+function withContextWindow(model: NormalizedOpenCodeModel): ModelInfo {
+  const maximum =
+    configOverrideFor(model.upstreamId) ??
+    model.contextWindow ??
+    bundledContextWindowFor(model.upstreamId) ??
+    fallbackContextWindow() ??
+    catchAllContextWindow();
+  const contextWindows = contextWindowsFor(maximum);
+  const budget = contextWindows?.[0] ?? maximum;
   return {
     id: toProviderModelId(model.source, model.upstreamId),
     name: model.displayName,
-    ...(model.contextWindow === undefined
-      ? {}
-      : { contextWindow: model.contextWindow }),
+    contextWindow: budget,
+    ...(contextWindows === undefined ? {} : { contextWindows }),
     inputModalities: [...model.inputModalities],
   };
+}
+
+function toModelInfo(model: NormalizedOpenCodeModel): ModelInfo {
+  return withContextWindow(model);
 }
 
 async function fetchSource(

@@ -128,6 +128,7 @@ export function parseProviderModelId(id: string): ParsedModelId | undefined {
 interface CatalogEntry {
   id: string;
   pricing?: NormalizedPricing;
+  contextWindow?: number;
 }
 
 interface PricedCatalog {
@@ -147,11 +148,46 @@ function parseCatalog(input: unknown): PricedCatalog {
     const id = asString(entry.id);
     if (!id) continue;
     const pricing = parsePricing(entry);
-    entries.push({ id, pricing });
+    const contextWindow = parseContextWindow(entry);
+    entries.push({
+      id,
+      ...(pricing === undefined ? {} : { pricing }),
+      ...(contextWindow === undefined ? {} : { contextWindow }),
+    });
   }
   if (entries.length === 0)
     throw new Error("catalog contained no valid models");
   return { entries };
+}
+
+/* Read a context-window length if the catalog exposes one. OpenCode's catalog
+ * shape is not versioned/guaranteed, so we probe the common field spellings
+ * (`context_window`, `context_length`, `contextWindow`) and must be tolerant of
+ * both direct numbers and nested objects. Absence is fine — the bundled table
+ * and `defaultContextWindow` fill the gap. */
+function parseContextWindow(
+  entry: Record<string, unknown>,
+): number | undefined {
+  const read = (value: unknown): number | undefined => {
+    const n = asNumber(value);
+    if (n !== undefined && n > 0) return n;
+    if (isRecord(value)) {
+      const nested =
+        asNumber(value.length) ??
+        asNumber(value.tokens) ??
+        asNumber(value.value) ??
+        asNumber(value.max);
+      if (nested !== undefined && nested > 0) return nested;
+    }
+    return undefined;
+  };
+  return (
+    read(entry.context_window) ??
+    read(entry.context_length) ??
+    read(entry.contextWindow) ??
+    read(entry.context) ??
+    (isRecord(entry.metadata) ? read(entry.metadata) : undefined)
+  );
 }
 
 function parsePricing(
@@ -195,6 +231,9 @@ function normalize(
     inputModalities: defaultModalities(source, entry.id),
     transport: DEFAULT_TRANSPORT,
     ...(entry.pricing === undefined ? {} : { pricing: entry.pricing }),
+    ...(entry.contextWindow === undefined
+      ? {}
+      : { contextWindow: entry.contextWindow }),
     rawMetadata: { id: entry.id },
   }));
 }

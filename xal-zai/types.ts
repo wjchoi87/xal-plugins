@@ -174,17 +174,6 @@ export interface ClientRuntime {
       providerId: string,
       profileId: string,
     ): Promise<Credential | undefined>;
-    save(
-      providerId: string,
-      profileId: string,
-      credential: Credential,
-    ): Promise<void>;
-    replace(
-      providerId: string,
-      profileId: string,
-      expected: Credential,
-      credential: Credential,
-    ): Promise<void>;
   };
   protectSecret(value: string): void;
 }
@@ -192,22 +181,7 @@ export interface ClientRuntime {
 export interface PluginContext {
   config: Record<string, unknown>;
   runtime: ClientRuntime;
-  signal: AbortSignal;
   registerProvider(provider: Provider): void;
-  registerCommand(command: Command): void;
-}
-
-export interface CommandContext {
-  print(line: string): void;
-  ask(question: string): Promise<string | undefined>;
-}
-
-export interface Command {
-  name: string;
-  aliases?: string[];
-  describe: string;
-  hidden?: boolean;
-  run(args: string[], ctx: CommandContext): Promise<void>;
 }
 
 export interface Plugin {
