@@ -170,7 +170,7 @@ The catalog's `/models` response omits a context length, so the plugin resolves 
 
 The reported `contextWindow` is a budget capped at 256K by default, so auto-compaction engages at 80% of the budget. Models whose maximum exceeds the budget (e.g. 1M `deepseek-v4-flash-free`) additionally get a `contextWindows` ladder (`256K / 400K / 600K / 800K / maximum`) that enables `/context-window`.
 
-**Muse Spark contributor models are fixed-context**: they reject any context-window parameter (`max_input_tokens` → "does not support configurable context windows"), so the plugin exposes them with a single fixed `contextWindow` (1M) and **no** `contextWindows` ladder — Xal won't try to reconfigure them.
+**Muse Spark contributor models are fixed-context**: they only serve OpenCode's **OpenAI `/responses`** protocol (they return 500 from `chat/completions`), so the plugin routes them to `/responses`. They also reject any context-window parameter (`max_input_tokens` → "does not support configurable context windows"), so the plugin exposes them with a single fixed `contextWindow` (1M) and **no** `contextWindows` ladder — Xal won't try to reconfigure them.
 
 ## Debug
 
