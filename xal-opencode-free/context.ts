@@ -33,16 +33,37 @@ const K = 1024;
 const M = 1_000_000;
 
 /* Family-aware table keyed by upstream model ID (prefix rules match longest
- * first). Values are best-effort, conservative, and always overridable via
- * `modelContextWindows`. Unknown families fall through to `DEFAULT_CATCH_ALL`. */
+ * first). Values are the actual maximum context window, sourced from upstream
+ * model specs rather than guesswork:
+ *
+ * - deepseek-v4-* : DeepSeek V4 Flash/Pro "CONTEXT LENGTH" 1M
+ *                  (api-docs.deepseek.com/quick_start/pricing, 2026-09)
+ * - nemotron-3-ultra-free : NVIDIA Nemotron 3 Ultra 550B max_position_embeddings
+ *                          262144 (HF nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B)
+ * - nemotron-3.5-lightning-free : 30B-A3B max_position_embeddings 1,048,576
+ *                  (HF nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B)
+ * - ling-3.0-flash-fin-free : inclusionAI/Ling-3.0-flash max_position_embeddings
+ *                            262144 (HF)
+ * - mimo-v2.5-free : XiaomiMiMo/MiMo-V2.5 max_position_embeddings 1,048,576 (HF)
+ * - muse-spark-*-contributor-free : Meta Muse Spark contributor tier; 1,048,576
+ *                  confirmed by live probing (input accepted to ~1,047,798
+ *                  tokens, rejected past it)
+ *
+ * Values are always overridable via `modelContextWindows`. Unknown families fall
+ * through to `DEFAULT_CATCH_ALL`. */
 const PREFIX_CONTEXT_WINDOWS: ReadonlyArray<readonly [string, number]> = [
-  /* Known free favorites (best-effort, from model family specs). */
+  /* Known free favorites (verified upstream specs). */
+  ["muse-spark-1.3-contributor-free", 1_048_576],
+  ["muse-spark-1.2-contributor-free", 1_048_576],
+  ["nemotron-3.5-lightning-free", 1_048_576],
+  ["nemotron-3-ultra-free", 262_144],
+  ["ling-3.0-flash-fin-free", 262_144],
   ["mimo-v2.5-free", M],
   ["mimo-", M],
-  ["deepseek-v4-", 128 * K],
+  ["deepseek-v4-", M],
   ["deepseek-", 128 * K],
-  ["muse-spark-1.2-contributor-free", 128 * K],
-  ["big-pickle", 128 * K],
+  /* big-pickle is a stealth model (no public spec); 1M per operator decision. */
+  ["big-pickle", M],
 ];
 
 /* Conservative fallback so every free model gets a compaction budget even when
@@ -113,6 +134,25 @@ export function fallbackContextWindow(): number | undefined {
 /* Generic catch-all so every free model gets a compaction budget. */
 export function catchAllContextWindow(): number {
   return DEFAULT_CATCH_ALL;
+}
+
+/* Models whose input context window cannot be raised or reconfigured by the
+ * caller (the upstream rejects any context-window parameter). For these the
+ * plugin must NOT advertise a `contextWindows` ladder — Xal then treats the
+ * model as having a single fixed window and won't attempt to reconfigure it.
+ *
+ * Verified by live probing: Muse Spark contributor models (served over
+ * `/responses`) reject `max_input_tokens` with "unknown parameter", so the
+ * request fails with "does not support configurable context windows". */
+const FIXED_CONTEXT_ONLY: ReadonlySet<string> = new Set([
+  "muse-spark-1.2-contributor-free",
+  "muse-spark-1.3-contributor-free",
+]);
+
+/* True when the model's context window is fixed and cannot be reconfigured.
+ * Such models are exposed with a single `contextWindow` and no ladder. */
+export function isFixedContextOnly(modelId: string): boolean {
+  return FIXED_CONTEXT_ONLY.has(modelId);
 }
 
 /* Xal exposes `/context-window` only when a model carries a ladder of

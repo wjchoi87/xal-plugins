@@ -151,15 +151,26 @@ Defaults work with no configuration. Optional keys under `pluginConfig.opencode-
 
 ### Context windows
 
-The catalog's `/models` response may omit a context length, so the plugin resolves each free model's context window to keep Xal's compaction, `/compaction-limit`, and `/context-window` working. Source precedence:
+The catalog's `/models` response omits a context length, so the plugin resolves each free model's context window from **verified upstream specs** to keep Xal's compaction, `/compaction-limit`, and `/context-window` working. Source precedence:
 
 1. `modelContextWindows` config override (exact upstream ID)
 2. a context length parsed from the catalog entry, if any (`context_window` / `context_length` / `contextWindow`)
-3. the bundled family table (e.g. `mimo-v2.5-free` → 1M, `deepseek-v4-*` → 128K)
+3. the bundled family table — verified upstream values, not guesses:
+   | model                           | context window | source                             |
+   | ------------------------------- | -------------- | ---------------------------------- |
+   | `mimo-v2.5-free`                | 1M             | XiaomiMiMo/MiMo-V2.5 (HF)          |
+   | `deepseek-v4-flash-free`        | 1M             | DeepSeek V4 API docs               |
+   | `ling-3.0-flash-fin-free`       | 262K           | inclusionAI/Ling-3.0-flash (HF)    |
+   | `nemotron-3-ultra-free`         | 262K           | NVIDIA Nemotron 3 Ultra (HF)       |
+   | `nemotron-3.5-lightning-free`   | 1M             | NVIDIA Nemotron 3.5 Lightning (HF) |
+   | `muse-spark-*.contributor-free` | 1M             | live-probed against Zen            |
+   | `big-pickle`                    | 1M             | operator decision (stealth model)  |
 4. `defaultContextWindow` config fallback
 5. a conservative 128K catch-all so every exposed free model gets a budget
 
-The reported `contextWindow` is a budget capped at 256K by default, so auto-compaction engages at 80% of the budget. Models whose maximum exceeds the budget (e.g. 1M `mimo-v2.5-free`) additionally get a `contextWindows` ladder (`256K / 400K / 600K / 800K / maximum`) that enables `/context-window`.
+The reported `contextWindow` is a budget capped at 256K by default, so auto-compaction engages at 80% of the budget. Models whose maximum exceeds the budget (e.g. 1M `deepseek-v4-flash-free`) additionally get a `contextWindows` ladder (`256K / 400K / 600K / 800K / maximum`) that enables `/context-window`.
+
+**Muse Spark contributor models are fixed-context**: they reject any context-window parameter (`max_input_tokens` → "does not support configurable context windows"), so the plugin exposes them with a single fixed `contextWindow` (1M) and **no** `contextWindows` ladder — Xal won't try to reconfigure them.
 
 ## Debug
 

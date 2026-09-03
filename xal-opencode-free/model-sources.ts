@@ -34,6 +34,7 @@ export interface NormalizedOpenCodeModel {
  * is a humanized version of the upstream ID. */
 const NAME_OVERRIDES: Record<string, string> = {
   "deepseek-v4-flash-free": "DeepSeek V4 Flash",
+  "muse-spark-1.3-contributor-free": "Muse Spark 1.3 Contributor",
   "muse-spark-1.2-contributor-free": "Muse Spark 1.2 Contributor",
   "mimo-v2.5-free": "MiMo V2.5",
   "hy3-free": "Hy3",

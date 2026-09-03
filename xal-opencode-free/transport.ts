@@ -28,9 +28,23 @@ const USER_AGENT = "xal-opencode-free/0.1.0";
 const DEFAULT_MAX_TOKENS = 32_000;
 
 /* Without wall-clock model metadata the catalog doesn't advertise a protocol,
- * so we default to the OpenAI-compatible chat-completions endpoint. Per-model
- * overrides can opt individual free models onto /responses or /messages. */
-const MODEL_TRANSPORT: Record<string, TransportKind> = {};
+ * so models default to the OpenAI-compatible chat-completions endpoint.
+ * Per-model overrides (keyed `source/upstreamId`) opt individual free models
+ * onto `/responses` or `/messages` when the upstream only serves that protocol.
+ *
+ * Policy change:
+ * - before: every model used chat-completions, so the Muse Spark contributor
+ *   models (which only serve the OpenAI `/responses` protocol) returned 500
+ *   "Internal server error" from `/chat/completions`
+ * - after: Muse Spark contributor models are routed to `/responses`
+ * - reason: `muse-spark-*-contributor-free` accept `/zen/v1/responses` (200)
+ *   but reject `chat/completions` and `/messages` (500) — verified against the
+ *   live Zen catalog
+ * - scope: requests for those exact upstream model IDs */
+const MODEL_TRANSPORT: Record<string, TransportKind> = {
+  "zen/muse-spark-1.2-contributor-free": "responses",
+  "zen/muse-spark-1.3-contributor-free": "responses",
+};
 
 export type SseEvent = { done: true } | { done: false; data: unknown };
 

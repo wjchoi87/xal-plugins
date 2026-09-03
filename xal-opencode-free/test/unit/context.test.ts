@@ -6,13 +6,32 @@ import {
   configureContext,
   contextWindowsFor,
   fallbackContextWindow,
+  isFixedContextOnly,
 } from "../../context";
 
 describe("bundled context table", () => {
-  test("known free favorites carry a context window", () => {
+  test("known free favorites carry their verified context window", () => {
     expect(bundledContextWindowFor("mimo-v2.5-free")).toBe(1_000_000);
-    expect(bundledContextWindowFor("deepseek-v4-flash-free")).toBe(128 * 1024);
-    expect(bundledContextWindowFor("big-pickle")).toBe(128 * 1024);
+    // verified upstream specs (see context.ts header)
+    expect(bundledContextWindowFor("deepseek-v4-flash-free")).toBe(1_000_000);
+    expect(bundledContextWindowFor("ling-3.0-flash-fin-free")).toBe(262_144);
+    expect(bundledContextWindowFor("nemotron-3-ultra-free")).toBe(262_144);
+    expect(bundledContextWindowFor("nemotron-3.5-lightning-free")).toBe(
+      1_048_576,
+    );
+    expect(bundledContextWindowFor("muse-spark-1.2-contributor-free")).toBe(
+      1_048_576,
+    );
+    expect(bundledContextWindowFor("muse-spark-1.3-contributor-free")).toBe(
+      1_048_576,
+    );
+    expect(bundledContextWindowFor("big-pickle")).toBe(1_000_000);
+  });
+
+  test("muse spark contributor models are fixed-context (no ladder)", () => {
+    expect(isFixedContextOnly("muse-spark-1.3-contributor-free")).toBe(true);
+    expect(isFixedContextOnly("muse-spark-1.2-contributor-free")).toBe(true);
+    expect(isFixedContextOnly("deepseek-v4-flash-free")).toBe(false);
   });
 
   test("unknown ids fall through to undefined (catch-all is separate)", () => {

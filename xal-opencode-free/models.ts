@@ -28,6 +28,7 @@ import {
   configOverrideFor,
   contextWindowsFor,
   fallbackContextWindow,
+  isFixedContextOnly,
 } from "./context";
 import { PROVIDER_NAME } from "./provider";
 import type { ModelCatalog, ModelInfo } from "./types";
@@ -77,7 +78,10 @@ function evaluateModels(
 /* Fill in the context window the catalog may never report. Source precedence
  * (see context.ts): config override, then a catalog-provided value, then the
  * bundled family table, then `defaultContextWindow`, then a conservative
- * catch-all so compaction always has a budget. */
+ * catch-all so compaction always has a budget. Models that cannot have their
+ * context window reconfigured (e.g. Muse Spark — see `isFixedContextOnly`) are
+ * exposed with a single fixed `contextWindow` and no `contextWindows` ladder, so
+ * Xal never tries to reconfigure them. */
 function withContextWindow(model: NormalizedOpenCodeModel): ModelInfo {
   const maximum =
     configOverrideFor(model.upstreamId) ??
@@ -85,6 +89,14 @@ function withContextWindow(model: NormalizedOpenCodeModel): ModelInfo {
     bundledContextWindowFor(model.upstreamId) ??
     fallbackContextWindow() ??
     catchAllContextWindow();
+  if (isFixedContextOnly(model.upstreamId)) {
+    return {
+      id: toProviderModelId(model.source, model.upstreamId),
+      name: model.displayName,
+      contextWindow: maximum,
+      inputModalities: [...model.inputModalities],
+    };
+  }
   const contextWindows = contextWindowsFor(maximum);
   const budget = contextWindows?.[0] ?? maximum;
   return {
