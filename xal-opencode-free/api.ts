@@ -1,3 +1,5 @@
+import { goBaseUrl } from "./config";
+import { currentOpenCodeSessionId } from "./session-context";
 import { asString, isRecord, ProviderError } from "./types";
 
 export function describeError(error: unknown): string {
@@ -28,6 +30,21 @@ export function retryAfterMs(value: string | null): number | undefined {
   return Math.max(0, date - Date.now());
 }
 
+function withOpenCodeSessionHeader(
+  url: string,
+  init: RequestInit,
+): RequestInit {
+  const sessionId = currentOpenCodeSessionId();
+  if (!sessionId) return init;
+
+  const goBase = goBaseUrl().replace(/\/+$/, "");
+  if (url !== goBase && !url.startsWith(`${goBase}/`)) return init;
+
+  const headers = new Headers(init.headers);
+  headers.set("x-opencode-session", sessionId);
+  return { ...init, headers };
+}
+
 export async function providerFetch(
   name: string,
   signal: AbortSignal | null | undefined,
@@ -35,7 +52,7 @@ export async function providerFetch(
   init: RequestInit,
 ): Promise<Response> {
   try {
-    return await fetch(url, init);
+    return await fetch(url, withOpenCodeSessionHeader(url, init));
   } catch (error) {
     if (
       signal?.aborted ||
