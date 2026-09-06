@@ -30,7 +30,10 @@ export function retryAfterMs(value: string | null): number | undefined {
   return Math.max(0, date - Date.now());
 }
 
-function withOpenCodeSessionHeader(url: string, init: RequestInit): RequestInit {
+function withOpenCodeSessionHeader(
+  url: string,
+  init: RequestInit,
+): RequestInit {
   const sessionId = currentOpenCodeSessionId();
   if (!sessionId) return init;
 

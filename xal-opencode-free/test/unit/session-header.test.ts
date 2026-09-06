@@ -11,7 +11,10 @@ afterEach(() => {
 
 function captureHeaders(): { headers: () => Headers | undefined } {
   let seen: Headers | undefined;
-  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = (async (
+    _input: Parameters<typeof fetch>[0],
+    init?: RequestInit,
+  ) => {
     seen = new Headers(init?.headers);
     return new Response("ok", { status: 200 });
   }) as typeof fetch;
