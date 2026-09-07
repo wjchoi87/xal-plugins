@@ -110,7 +110,7 @@ describe("provider session stream lifecycle", () => {
     expect(currentOpenCodeSessionId()).toBeUndefined();
   });
 
-  test("concurrent Go sessions stay isolated and Zen remains unchanged", async () => {
+  test("concurrent Go and Zen sessions stay isolated", async () => {
     const seen: { model: string; sessionId: string | null }[] = [];
     const bodies: ReadableStream<Uint8Array>[] = [];
     globalThis.fetch = (async (
@@ -157,7 +157,7 @@ describe("provider session stream lifecycle", () => {
           ? "session-a"
           : entry.model === "haihai-free"
             ? "session-b"
-            : null,
+            : "session-zen",
       );
     }
     expect(bodies.every((body) => !body.locked)).toBe(true);

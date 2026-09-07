@@ -1,4 +1,4 @@
-import { goBaseUrl } from "./config";
+import { goBaseUrl, zenBaseUrl } from "./config";
 import { currentOpenCodeSessionId } from "./session-context";
 import { asString, isRecord, ProviderError } from "./types";
 
@@ -30,6 +30,17 @@ export function retryAfterMs(value: string | null): number | undefined {
   return Math.max(0, date - Date.now());
 }
 
+/* Policy change:
+ * - before: the stable session id was attached only to Go base-URL requests;
+ *   Zen requests went out without x-opencode-session.
+ * - after: the session id is attached to both Zen and Go inference requests
+ *   while a stream session is active.
+ * - reason: the OpenCode console gateway now rejects session-less requests
+ *   with 400 "Request is missing x-opencode-session and cannot be routed
+ *   efficiently" (see https://opencode.ai/docs/go/#where-can-i-use-it), and
+ *   Zen free models are served by that same gateway.
+ * - scope: any streamed call to zenBaseUrl/goBaseUrl made inside a session;
+ *   catalog /models fetches remain session-less by design. */
 function withOpenCodeSessionHeader(
   url: string,
   init: RequestInit,
@@ -37,8 +48,13 @@ function withOpenCodeSessionHeader(
   const sessionId = currentOpenCodeSessionId();
   if (!sessionId) return init;
 
-  const goBase = goBaseUrl().replace(/\/+$/, "");
-  if (url !== goBase && !url.startsWith(`${goBase}/`)) return init;
+  const bases = [goBaseUrl(), zenBaseUrl()].map((base) =>
+    base.replace(/\/+$/, ""),
+  );
+  const matches = bases.some(
+    (base) => url === base || url.startsWith(`${base}/`),
+  );
+  if (!matches) return init;
 
   const headers = new Headers(init.headers);
   headers.set("x-opencode-session", sessionId);

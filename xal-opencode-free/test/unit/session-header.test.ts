@@ -21,7 +21,7 @@ function captureHeaders(): { headers: () => Headers | undefined } {
   return { headers: () => seen };
 }
 
-describe("OpenCode Go session header", () => {
+describe("OpenCode session header", () => {
   test("adds the stable Xal session id to Go inference requests", async () => {
     const captured = captureHeaders();
 
@@ -37,7 +37,7 @@ describe("OpenCode Go session header", () => {
     expect(captured.headers()?.get("x-opencode-session")).toBe("session-123");
   });
 
-  test("does not add the Go-only header to Zen requests", async () => {
+  test("adds the stable Xal session id to Zen inference requests", async () => {
     const captured = captureHeaders();
 
     await runWithOpenCodeSession("session-123", () =>
@@ -49,7 +49,7 @@ describe("OpenCode Go session header", () => {
       ),
     );
 
-    expect(captured.headers()?.get("x-opencode-session")).toBeNull();
+    expect(captured.headers()?.get("x-opencode-session")).toBe("session-123");
   });
 
   test("does not invent a session id outside a streaming request", async () => {
