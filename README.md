@@ -12,12 +12,15 @@ Provider plugins for [Xal](https://github.com/xal-sh/xal). OpenAI-compatible end
 | [xal-alibaba-token-plan](xal-alibaba-token-plan) | Alibaba token plan   | API key | required — set during install         |
 | [xal-opencode-free](xal-opencode-free)           | OpenCode Free        | API key | `https://opencode.ai/zen/v1` (fixed)  |
 | [xal-zai-coding-plan](xal-zai-coding-plan)     | Z.ai Coding Plan     | API key | `https://api.z.ai/api/coding/paas/v4` (default) |
+| [xal-custom-provider](xal-custom-provider)       | Any OpenAI/Anthropic-compatible endpoint | API key | per profile — set at `connect`     |
 
 Each plugin is self-contained and needs no runtime dependency on Xal's source or on the other plugins.
 
 [xal-metrics](xal-metrics) is also packaged here: a non-provider plugin that collects per-turn timing and usage metrics (turn duration, tokens, cache hit rate, tool timing, and — when the XAL runtime supports the stream hook — TTFT, TPS and stalls). It installs the same way and is viewable with `/metrics`.
 
 [xal-context-gc](xal-context-gc) is a non-provider plugin that pages large tool outputs out of model context (ingress GC): exact raw output is stored on disk and recalled on demand via the bounded `context_gc_recall` tool, preserving failure cores and exact deduplication while keeping the prompt prefix cache-stable. View session stats with `/context-gc`.
+
+[xal-custom-provider](xal-custom-provider) registers a generic `custom` provider for any endpoint you bring. When you connect a profile you pick which wire protocol it speaks — OpenAI Chat Completions, OpenAI Responses, or Anthropic Messages — and the plugin streams, parses, and reports tool calls in exactly that dialect. Each `xal connect custom <name>` stores its own base URL, protocol, and key, so one install backs many endpoints (vLLM, OpenRouter, Anthropic API, ...).
 
 ## Install
 
@@ -38,13 +41,14 @@ Select plugins to install. Type comma/space separated numbers, or Enter for all.
   4. xal-alibaba-token-plan     Alibaba token plan
   5. xal-opencode-free          OpenCode Free models
   6. xal-zai-coding-plan         Z.ai GLM Coding Plan models
-  7. xal-metrics                Per-turn timing and usage metrics
-  8. xal-context-gc             Agent context memory paging
+  7. xal-custom-provider        Custom OpenAI/Anthropic-compatible endpoint
+  8. xal-metrics                Per-turn timing and usage metrics
+  9. xal-context-gc             Agent context memory paging
 
 Selection [Enter = all]:
 ```
 
-The installer copies each selected plugin into `$XAL_DIR/plugins/<name>` (`$XAL_DIR` is `$XAL_HOME`, or `~/.xal` by default), registers it in `config.json`, and asks for the base URL — re-running the installer pre-fills values you already configured.
+The installer copies each selected plugin into `$XAL_DIR/plugins/<name>` (`$XAL_DIR` is `$XAL_HOME`, or `~/.xal` by default) and registers it in `config.json`, asking for the base URL where a plugin takes one — re-running the installer pre-fills values you already configured. `xal-custom-provider` is the exception: it registers with no prompts and collects the base URL, protocol, and key per profile at `connect` time.
 
 To install a single plugin directly, run its own `install.sh`:
 
@@ -61,6 +65,7 @@ xal connect commandcode-bridge      # paste the bridge API key
 xal connect alibaba-token-plan      # paste the plan API key
 xal connect opencode-free           # paste the OpenCode API key
 xal connect zai-coding-plan         # paste the Z.ai GLM Coding Plan API key
+xal connect custom <profile>       # pick protocol + base URL + key; repeat per endpoint
 ```
 
 ## Requirements
