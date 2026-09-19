@@ -91,6 +91,7 @@ function withContextWindow(model: NormalizedOpenCodeModel): ModelInfo {
     catchAllContextWindow();
   if (isFixedContextOnly(model.upstreamId)) {
     return {
+      kind: "text",
       id: toProviderModelId(model.source, model.upstreamId),
       name: model.displayName,
       contextWindow: maximum,
@@ -100,6 +101,7 @@ function withContextWindow(model: NormalizedOpenCodeModel): ModelInfo {
   const contextWindows = contextWindowsFor(maximum);
   const budget = contextWindows?.[0] ?? maximum;
   return {
+    kind: "text",
     id: toProviderModelId(model.source, model.upstreamId),
     name: model.displayName,
     contextWindow: budget,
@@ -242,7 +244,7 @@ async function resolveCatalog(
   if (models.length === 0 && anyRuntime === false) {
     const merged = await readMergedCache();
     if (merged && merged.models.length > 0) {
-      models = merged.models;
+      models = merged.models.map((model) => ({ ...model, kind: "text" }));
       fallback = true;
     }
   }

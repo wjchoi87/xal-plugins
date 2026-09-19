@@ -91,6 +91,7 @@ async function liveDiscover(profileId: string): Promise<ModelInfo[]> {
         `${PROVIDER_NAME} models response contained a model with no ID`,
       );
     models.push({
+      kind: "text",
       id,
       name: id,
       inputModalities: ["text"],

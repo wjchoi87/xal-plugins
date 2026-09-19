@@ -34,6 +34,7 @@ async function* streamWithSession(
 }
 
 export const openCodeFreeProvider: Provider = {
+  kind: "text",
   id: PROVIDER_ID,
   name: PROVIDER_NAME,
   aliases: [],

@@ -7,6 +7,7 @@ export const PROVIDER_ID = "commandcode-bridge";
 export const PROVIDER_NAME = "Command Code";
 
 export const commandCodeProvider: Provider = {
+  kind: "text",
   id: PROVIDER_ID,
   name: PROVIDER_NAME,
   aliases: [],

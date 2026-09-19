@@ -7,6 +7,7 @@ export const PROVIDER_ID = "alibaba-token-plan";
 export const PROVIDER_NAME = "Alibaba Token Plan";
 
 export const alibabaTokenPlanProvider: Provider = {
+  kind: "text",
   id: PROVIDER_ID,
   name: PROVIDER_NAME,
   aliases: ["ali-token"],

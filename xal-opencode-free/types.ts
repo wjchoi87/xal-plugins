@@ -90,6 +90,7 @@ export interface ThinkingOptions {
 }
 
 export interface ModelInfo {
+  kind: "text";
   id: string;
   name: string;
   contextWindow?: number;
@@ -156,6 +157,7 @@ export interface ApiKeyCredential {
 export type Credential = ApiKeyCredential;
 
 export interface Provider {
+  kind: "text";
   id: string;
   name: string;
   aliases: string[];

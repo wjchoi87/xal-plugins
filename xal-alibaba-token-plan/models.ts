@@ -58,13 +58,14 @@ function withContextWindow(model: ModelInfo): ModelInfo {
     bundledContextWindowFor(model.id) ??
     fallbackContextWindow() ??
     model.contextWindow;
-  if (maximum === undefined) return model;
+  if (maximum === undefined) return { ...model, kind: "text" };
   const contextWindows = contextWindowsFor(maximum);
   const budget = contextWindows?.[0] ?? maximum;
   if (model.contextWindow === budget && contextWindows === undefined)
-    return model;
+    return { ...model, kind: "text" };
   return {
     ...model,
+    kind: "text",
     contextWindow: budget,
     ...(contextWindows === undefined ? {} : { contextWindows }),
   };
@@ -181,6 +182,7 @@ async function liveDiscover(profileId: string): Promise<ModelInfo[]> {
     })),
   );
   return probed.map(({ id, supported }) => ({
+    kind: "text",
     id,
     name: id,
     inputModalities: ["text", "image"],

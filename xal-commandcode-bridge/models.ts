@@ -136,6 +136,7 @@ async function liveDiscover(profileId: string): Promise<ModelInfo[]> {
     })),
   );
   return probed.map(({ id, supported }) => ({
+    kind: "text",
     id,
     name: id,
     inputModalities: ["text", "image"],
@@ -149,7 +150,10 @@ async function models(profileId: string): Promise<{
 }> {
   const cached = await readCache(profileId);
   if (cached && Date.now() - cached.updatedAt < CACHE_TTL_MS) {
-    return { models: cached.models, fromCache: true };
+    return {
+      models: cached.models.map((model) => ({ ...model, kind: "text" })),
+      fromCache: true,
+    };
   }
   const live = await liveDiscover(profileId);
   await writeCache(profileId, live);

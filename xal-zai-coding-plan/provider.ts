@@ -7,6 +7,7 @@ export const PROVIDER_ID = "zai-coding-plan";
 export const PROVIDER_NAME = "Z.ai - Coding Plan";
 
 export const zaiProvider: Provider = {
+  kind: "text",
   id: PROVIDER_ID,
   name: PROVIDER_NAME,
   aliases: ["zai", "glm", "zhipu", "coding-plan"],

@@ -7,6 +7,7 @@ export const PROVIDER_ID = "litellm";
 export const PROVIDER_NAME = "LiteLLM";
 
 export const litellmProvider: Provider = {
+  kind: "text",
   id: PROVIDER_ID,
   name: PROVIDER_NAME,
   aliases: ["litellm"],

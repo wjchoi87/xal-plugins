@@ -49,6 +49,7 @@ async function discoverModels(profileId: string): Promise<ModelInfo[]> {
       );
     const thinking = thinkingFor(id);
     models.push({
+      kind: "text",
       id,
       name: id,
       inputModalities: ["text", "image"],

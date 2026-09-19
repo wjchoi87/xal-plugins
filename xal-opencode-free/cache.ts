@@ -70,6 +70,7 @@ export function isCacheFresh(cached: SourceModelCache | undefined): boolean {
 }
 
 interface MergedEntry {
+  kind: "text";
   id: string;
   name: string;
   contextWindow?: number;
