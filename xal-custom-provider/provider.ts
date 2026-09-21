@@ -7,6 +7,7 @@ export const PROVIDER_ID = "custom";
 export const PROVIDER_NAME = "Custom";
 
 export const customProvider: Provider = {
+  kind: "text",
   id: PROVIDER_ID,
   name: PROVIDER_NAME,
   aliases: ["custom"],

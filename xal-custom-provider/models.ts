@@ -54,6 +54,7 @@ async function discoverModels(profileId: string): Promise<ModelInfo[]> {
       );
     const thinking = thinkingFor(id);
     models.push({
+      kind: "text",
       id,
       name: asString(entry.display_name) ?? id,
       inputModalities: ["text", "image"],
