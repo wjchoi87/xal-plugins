@@ -47,6 +47,26 @@ describe("catalog parsers", () => {
   test("empty catalog fails", () => {
     expect(() => parseZenModels(catalog([]))).toThrow();
   });
+
+  test("dotted free model ids keep their version in the display name", () => {
+    const models = parseZenModels(
+      catalog(["deepseek-v4.1-flash-free", "glm-5.3-flash-free"]),
+    );
+    expect(models.map((model) => model.displayName)).toEqual([
+      "DeepSeek V4.1 Flash (Zen Free)",
+      "GLM 5.3 Flash (Zen Free)",
+    ]);
+  });
+
+  test("humanized names keep dotted versions intact", () => {
+    const models = parseZenModels(
+      catalog(["nemotron-3.5-super-vl-free", "foo-v9.9-flash-free"]),
+    );
+    expect(models.map((model) => model.displayName)).toEqual([
+      "Nemotron 3.5 Super Vl (Zen Free)",
+      "Foo V9.9 Flash (Zen Free)",
+    ]);
+  });
 });
 
 describe("model id routing", () => {

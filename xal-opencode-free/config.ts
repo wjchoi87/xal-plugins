@@ -2,6 +2,8 @@ export const DEFAULT_ZEN_BASE_URL = "https://opencode.ai/zen/v1";
 export const DEFAULT_GO_BASE_URL = "https://opencode.ai/zen/go/v1";
 
 const DEFAULT_CACHE_TTL_MS = 10 * 60 * 1000;
+export const DEFAULT_MODEL_METADATA_URL = "https://models.dev/api.json";
+const DEFAULT_MODEL_METADATA_TTL_MS = 12 * 60 * 60 * 1000;
 
 export interface OpenCodeFreeConfig {
   /* How long a fetched source catalog is considered fresh. */
@@ -11,6 +13,10 @@ export interface OpenCodeFreeConfig {
   /* Override the upstream catalog base URLs (normally left default). */
   zenBaseUrl: string;
   goBaseUrl: string;
+  /* Sync context limits, retirements, and protocols from models.dev. */
+  syncModelMetadata: boolean;
+  modelMetadataUrl: string;
+  modelMetadataTtlMs: number;
 }
 
 let config: OpenCodeFreeConfig = {
@@ -18,7 +24,18 @@ let config: OpenCodeFreeConfig = {
   debugModels: false,
   zenBaseUrl: DEFAULT_ZEN_BASE_URL,
   goBaseUrl: DEFAULT_GO_BASE_URL,
+  syncModelMetadata: true,
+  modelMetadataUrl: DEFAULT_MODEL_METADATA_URL,
+  modelMetadataTtlMs: DEFAULT_MODEL_METADATA_TTL_MS,
 };
+
+function readPositiveMs(value: unknown, key: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0)
+    throw new Error(
+      `opencode-free ${key} must be a positive number of milliseconds`,
+    );
+  return value;
+}
 
 /* Config is resolved once at registration time from pluginConfig.opencode-free.
  * Defaults keep the plugin working with no configuration at all. */
@@ -27,16 +44,17 @@ export function resolveConfig(raw: Record<string, unknown>): void {
   const cfg = raw;
   const cacheRaw = cfg.cacheTtlMs;
   if (cacheRaw !== undefined) {
-    if (
-      typeof cacheRaw !== "number" ||
-      !Number.isFinite(cacheRaw) ||
-      cacheRaw <= 0
-    )
-      throw new Error(
-        "opencode-free cacheTtlMs must be a positive number of milliseconds",
-      );
-    next.cacheTtlMs = cacheRaw;
+    next.cacheTtlMs = readPositiveMs(cacheRaw, "cacheTtlMs");
   }
+  const syncRaw = cfg.syncModelMetadata;
+  if (syncRaw !== undefined && typeof syncRaw !== "boolean")
+    throw new Error("opencode-free syncModelMetadata must be a boolean");
+  next.syncModelMetadata = syncRaw ?? true;
+  const metadataTtlRaw = cfg.modelMetadataTtlMs;
+  next.modelMetadataTtlMs =
+    metadataTtlRaw === undefined
+      ? DEFAULT_MODEL_METADATA_TTL_MS
+      : readPositiveMs(metadataTtlRaw, "modelMetadataTtlMs");
   const debugRaw = cfg.debugModels;
   if (debugRaw !== undefined) {
     if (typeof debugRaw !== "boolean")
@@ -46,6 +64,7 @@ export function resolveConfig(raw: Record<string, unknown>): void {
   for (const [key, factory] of [
     ["zenBaseUrl", () => DEFAULT_ZEN_BASE_URL],
     ["goBaseUrl", () => DEFAULT_GO_BASE_URL],
+    ["modelMetadataUrl", () => DEFAULT_MODEL_METADATA_URL],
   ] as const) {
     const rawValue = cfg[key];
     if (rawValue !== undefined) {
@@ -77,4 +96,16 @@ export function zenBaseUrl(): string {
 
 export function goBaseUrl(): string {
   return config.goBaseUrl;
+}
+
+export function syncModelMetadata(): boolean {
+  return config.syncModelMetadata;
+}
+
+export function modelMetadataUrl(): string {
+  return config.modelMetadataUrl;
+}
+
+export function modelMetadataTtlMs(): number {
+  return config.modelMetadataTtlMs;
 }

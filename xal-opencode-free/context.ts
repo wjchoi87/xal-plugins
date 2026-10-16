@@ -10,9 +10,10 @@ import { isRecord } from "./types";
  *
  *   1. `modelContextWindows` config override for the exact upstream model ID
  *   2. the raw context window parsed from the catalog entry (if any)
- *   3. the bundled table (family-aware)
- *   4. `defaultContextWindow` config fallback (when bundled table can't tell)
- *   5. a conservative 128K catch-all so compaction always engages
+ *   3. the `limit.context` synced from models.dev (metadata.ts)
+ *   4. the bundled table (family-aware; offline fallback for step 3)
+ *   5. `defaultContextWindow` config fallback (when bundled table can't tell)
+ *   6. a conservative 128K catch-all so compaction always engages
  *
  * Source precedence is deliberately catalog-first: unlike the Alibaba/z.ai
  * endpoints (which never return a context length), OpenCode may eventually
@@ -30,40 +31,58 @@ import { isRecord } from "./types";
  * - scope: every free model returned to Xal, both live and cached */
 
 const K = 1024;
-const M = 1_000_000;
 
 /* Family-aware table keyed by upstream model ID (prefix rules match longest
  * first). Values are the actual maximum context window, sourced from upstream
  * model specs rather than guesswork:
  *
- * - deepseek-v4-* : DeepSeek V4 Flash/Pro "CONTEXT LENGTH" 1M
- *                  (api-docs.deepseek.com/quick_start/pricing, 2026-09)
  * - nemotron-3-ultra-free : NVIDIA Nemotron 3 Ultra 550B max_position_embeddings
  *                          262144 (HF nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B)
  * - nemotron-3.5-lightning-free : 30B-A3B max_position_embeddings 1,048,576
  *                  (HF nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B)
- * - ling-3.0-flash-fin-free : inclusionAI/Ling-3.0-flash max_position_embeddings
- *                            262144 (HF)
- * - mimo-v2.5-free : XiaomiMiMo/MiMo-V2.5 max_position_embeddings 1,048,576 (HF)
- * - muse-spark-*-contributor-free : Meta Muse Spark contributor tier; 1,048,576
- *                  confirmed by live probing (input accepted to ~1,047,798
- *                  tokens, rejected past it)
+ * - muse-spark-1.3-contributor-free : Meta Muse Spark contributor tier;
+ *                  1,048,576 confirmed by live probing (input accepted to
+ *                  ~1,047,798 tokens, rejected past it)
+ * - deepseek-v4.1-flash-free, glm-5.3-flash-free, mimo-*, big-pickle :
+ *                  OpenCode's own free-tier limit `limit.context = 200_000`
+ *                  (models.dev providers/opencode/models/*.toml, 2026-10). The free
+ *                  variants override the paid base model's larger window, so
+ *                  the upstream model spec must not be used for them.
+ *
+ * Policy change:
+ * - before: `mimo-` resolved to 1M (MiMo V2.5 HF spec), so mimo-v2.6-flash-free
+ *   advertised a 256K budget and a ladder up to 1M; retired entries
+ *   (deepseek-v4-*, mimo-v2.5-free, muse-spark-1.2, ling-3.0-flash-fin) were
+ *   still listed
+ * - after: `mimo-` resolves to OpenCode's 200K free-tier limit; retired entries
+ *   are removed (they are excluded from the catalog in free-evaluator.ts)
+ * - reason: OpenCode serves the free MiMo variants with a 200K window, so a
+ *   budget above it lets a conversation grow past what the upstream accepts
+ *   before compaction engages
+ * - scope: context budget/ladder of `mimo-*` free models; a
+ *   `modelContextWindows` override still wins
+ *
+ * Policy change:
+ * - before: big-pickle resolved to 1M (operator decision; stealth model with
+ *   no public spec), giving a 256K budget and a ladder up to 1M
+ * - after: big-pickle resolves to 200K with no ladder
+ * - reason: OpenCode publishes `limit.context = 200_000` for big-pickle
+ *   (models.dev providers/opencode/models/big-pickle.toml), so a 256K budget
+ *   let conversations pass the upstream limit before compaction engaged
+ * - scope: big-pickle only; a `modelContextWindows` override still wins
  *
  * Values are always overridable via `modelContextWindows`. Unknown families fall
  * through to `DEFAULT_CATCH_ALL`. */
 const PREFIX_CONTEXT_WINDOWS: ReadonlyArray<readonly [string, number]> = [
-  /* Known free favorites (verified upstream specs). */
+  /* Known free models (see sources above). */
   ["muse-spark-1.3-contributor-free", 1_048_576],
-  ["muse-spark-1.2-contributor-free", 1_048_576],
   ["nemotron-3.5-lightning-free", 1_048_576],
   ["nemotron-3-ultra-free", 262_144],
-  ["ling-3.0-flash-fin-free", 262_144],
-  ["mimo-v2.5-free", M],
-  ["mimo-", M],
-  ["deepseek-v4-", M],
+  ["deepseek-v4.1-flash-free", 200_000],
+  ["glm-5.3-flash-free", 200_000],
+  ["mimo-", 200_000],
+  ["big-pickle", 200_000],
   ["deepseek-", 128 * K],
-  /* big-pickle is a stealth model (no public spec); 1M per operator decision. */
-  ["big-pickle", M],
 ];
 
 /* Conservative fallback so every free model gets a compaction budget even when
@@ -145,7 +164,6 @@ export function catchAllContextWindow(): number {
  * `/responses`) reject `max_input_tokens` with "unknown parameter", so the
  * request fails with "does not support configurable context windows". */
 const FIXED_CONTEXT_ONLY: ReadonlySet<string> = new Set([
-  "muse-spark-1.2-contributor-free",
   "muse-spark-1.3-contributor-free",
 ]);
 

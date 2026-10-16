@@ -1,5 +1,6 @@
 import { asNumber, asString, isRecord } from "./types";
 import { goBaseUrl, zenBaseUrl } from "./config";
+import { upstreamMetadataFor } from "./metadata";
 
 export type OpenCodeSource = "zen" | "go";
 
@@ -33,16 +34,13 @@ export interface NormalizedOpenCodeModel {
  * are cosmetic only — they never influence free/paid classification. Fallback
  * is a humanized version of the upstream ID. */
 const NAME_OVERRIDES: Record<string, string> = {
-  "deepseek-v4-flash-free": "DeepSeek V4 Flash",
+  "deepseek-v4.1-flash-free": "DeepSeek V4.1 Flash",
+  "glm-5.3-flash-free": "GLM 5.3 Flash",
+  "mimo-v2.6-flash-free": "MiMo V2.6 Flash",
   "muse-spark-1.3-contributor-free": "Muse Spark 1.3 Contributor",
-  "muse-spark-1.2-contributor-free": "Muse Spark 1.2 Contributor",
-  "mimo-v2.5-free": "MiMo V2.5",
-  "hy3-free": "Hy3",
   "nemotron-3-ultra-free": "Nemotron 3 Ultra",
   "nemotron-3.5-lightning-free": "Nemotron 3.5 Lightning",
-  "laguna-s-2.1-free": "Laguna S 2.1",
   "big-pickle": "Big Pickle",
-  "ox-alpha-free": "Ox Alpha",
 };
 
 /* Per-source display label appended to the Xal-visible name so users always
@@ -51,29 +49,49 @@ export function sourceLabel(source: OpenCodeSource): string {
   return source === "zen" ? "Zen Free" : "Go Free";
 }
 
+/* Dots are kept so version numbers survive ("mimo-v2.6-flash-free" ->
+ * "Mimo V2.6 Flash", not "Mimo V2 6 Flash"). */
 function humanize(id: string): string {
   const base = id
     .replace(/-free(-|$)/g, (match) => (match === "-free" ? "" : "-"))
-    .replace(/[-_.]+/g, " ")
+    .replace(/[-_]+/g, " ")
     .trim();
   return base === ""
     ? id
     : base
         .split(" ")
-        .map((part) => {
-          const lower = part.toLowerCase();
-          return /^(v)?[0-9]+(\.[0-9]+)?$/.test(lower) || /^v[0-9]/.test(lower)
-            ? part
-            : part.charAt(0).toUpperCase() + part.slice(1);
-        })
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(" ");
 }
 
+/* The official name synced from models.dev, minus the trailing "Free" the
+ * source label already conveys ("GLM-5.3-Flash Free" -> "GLM-5.3-Flash"). */
+function syncedName(
+  source: OpenCodeSource,
+  upstreamId: string,
+): string | undefined {
+  const name = upstreamMetadataFor(source, upstreamId)?.name;
+  const trimmed = name?.replace(/\s+free$/i, "").trim();
+  return trimmed ? trimmed : undefined;
+}
+
+/* Policy change:
+ * - before: names came from NAME_OVERRIDES, else a humanized ID that split
+ *   version numbers on dots ("Nemotron 3 5 Super Vl")
+ * - after: NAME_OVERRIDES, then the official models.dev name, then the
+ *   humanized ID (dots kept)
+ * - reason: new free models should show their real names without a plugin
+ *   update; curated overrides still win where the official name drops
+ *   meaning (e.g. Muse Spark's "Contributor" tier)
+ * - scope: display names only; IDs, routing, and free evaluation unchanged */
 export function displayNameFor(
   source: OpenCodeSource,
   upstreamId: string,
 ): string {
-  const base = NAME_OVERRIDES[upstreamId] ?? humanize(upstreamId);
+  const base =
+    NAME_OVERRIDES[upstreamId] ??
+    syncedName(source, upstreamId) ??
+    humanize(upstreamId);
   return `${base} (${sourceLabel(source)})`;
 }
 

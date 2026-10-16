@@ -19,12 +19,20 @@ const ZEN_IDS = [
   "qwen3.6-plus",
   "mimo-v2.5",
   "big-pickle",
-  "deepseek-v4-flash-free",
-  "muse-spark-1.2-contributor-free",
-  "mimo-v2.5-free",
-  "hy3-free",
+  "deepseek-v4.1-flash",
+  "deepseek-v4.1-flash-free",
+  "glm-5.3-flash",
+  "glm-5.3-flash-free",
+  "mimo-v2.6-flash-free",
+  "muse-spark-1.3-contributor-free",
   "nemotron-3-ultra-free",
-  "laguna-s-2.1-free",
+  "cat-jam-free",
+  "jev-1.13-free",
+  // retired free models the live catalog may still list
+  "deepseek-v4-flash-free",
+  "mimo-v2.5-free",
+  "muse-spark-1.2-contributor-free",
+  "exo-free",
 ];
 
 const GO_IDS = [
@@ -35,6 +43,7 @@ const GO_IDS = [
   "minimax-m3",
   "haihai-free",
   "ox-alpha-free",
+  "step-5-preview-free",
 ];
 
 function catalog(ids: string[]): unknown {
@@ -59,9 +68,11 @@ describe("core invariant: exposed === free", () => {
     for (const model of go) {
       const evalResult = evaluateFree(model);
       if (evalResult.status !== "free") {
-        expect(["go-subscription-model", "manual-paid-override"]).toContain(
-          evalResult.reason,
-        );
+        expect([
+          "go-subscription-model",
+          "manual-paid-override",
+          "manual-exclude-override",
+        ]).toContain(evalResult.reason);
       }
     }
     const exposedGo = go.filter(
@@ -77,10 +88,32 @@ describe("core invariant: exposed === free", () => {
     const free = zen
       .filter((model) => evaluateFree(model).status === "free")
       .map((model) => toProviderModelId("zen", model.upstreamId));
-    expect(free).toContain("zen/deepseek-v4-flash-free");
     expect(free).toContain("zen/big-pickle");
+    expect(free).toContain("zen/deepseek-v4.1-flash-free");
+    expect(free).toContain("zen/glm-5.3-flash-free");
+    expect(free).not.toContain("zen/deepseek-v4.1-flash");
+    expect(free).not.toContain("zen/glm-5.3-flash");
     expect(free).not.toContain("zen/glm-5.2");
     expect(free).not.toContain("zen/deepseek-v4-pro");
+  });
+
+  test("retired and non-chat free models are never exposed", () => {
+    const zen = parseZenModels(catalog(ZEN_IDS));
+    const go = parseGoModels(catalog(GO_IDS));
+    const exposed = [...zen, ...go]
+      .filter((model) => evaluateFree(model).status === "free")
+      .map((model) => toProviderModelId(model.source, model.upstreamId));
+    for (const id of [
+      "zen/deepseek-v4-flash-free",
+      "zen/mimo-v2.5-free",
+      "zen/muse-spark-1.2-contributor-free",
+      "zen/exo-free",
+      "zen/jev-1.13-free",
+      "go/step-5-preview-free",
+    ]) {
+      expect(exposed).not.toContain(id);
+    }
+    expect(exposed).toContain("zen/mimo-v2.6-flash-free");
   });
 
   test("dedupe + source prefix keeps zen and go same-name distinct", () => {

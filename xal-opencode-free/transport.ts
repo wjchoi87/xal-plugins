@@ -1,8 +1,10 @@
 import { providerFetch, raiseForStatus } from "./api";
 import { apiKey } from "./auth";
+import { ensureUpstreamMetadata, upstreamMetadataFor } from "./metadata";
 import {
   parseProviderModelId,
   resolveEndpoint,
+  type OpenCodeSource,
   type TransportKind,
 } from "./model-sources";
 import { PROVIDER_ID, PROVIDER_NAME } from "./provider";
@@ -42,9 +44,15 @@ const DEFAULT_MAX_TOKENS = 32_000;
  *   live Zen catalog
  * - scope: requests for those exact upstream model IDs */
 const MODEL_TRANSPORT: Record<string, TransportKind> = {
-  "zen/muse-spark-1.2-contributor-free": "responses",
   "zen/muse-spark-1.3-contributor-free": "responses",
 };
+/* Policy change:
+ * - before: routing came only from MODEL_TRANSPORT, so a new free model served
+ *   on `/responses` or `/messages` was sent to `/chat/completions` and failed
+ * - after: the protocol synced from models.dev (metadata.ts) wins; the table
+ *   above is the fallback when no synced metadata is available
+ * - reason: OpenCode assigns each model one protocol and publishes it there
+ * - scope: request routing for every model with synced metadata */
 
 export type SseEvent = { done: true } | { done: false; data: unknown };
 
@@ -184,23 +192,36 @@ function toolCallItem(
   };
 }
 
-function resolveTransport(source: string, upstreamId: string): TransportKind {
+function resolveTransport(
+  source: OpenCodeSource,
+  upstreamId: string,
+): TransportKind {
+  const synced = upstreamMetadataFor(source, upstreamId)?.protocol;
+  if (synced !== undefined && synced !== "unsupported") return synced;
   const explicit = MODEL_TRANSPORT[`${source}/${upstreamId}`];
   return explicit ?? "chat-completions";
 }
 
+/* Policy change:
+ * - before: every request authenticated only with `authorization`
+ * - after: `/messages` requests also carry `x-api-key`
+ * - reason: OpenCode's gateway reads the key for `/messages` from `x-api-key`
+ *   (Anthropic convention), so without it those requests went out anonymous
+ * - scope: anthropic-messages transport only; other endpoints are unchanged */
 async function openCodeFetch(
   endpoint: string,
   body: string,
   profileId: string,
   signal?: AbortSignal,
 ): Promise<Response> {
+  const key = await apiKey(profileId);
   const response = await providerFetch(PROVIDER_NAME, signal, endpoint, {
     method: "POST",
     headers: {
       accept: "text/event-stream",
       "content-type": "application/json",
-      authorization: `Bearer ${await apiKey(profileId)}`,
+      authorization: `Bearer ${key}`,
+      ...(endpoint.endsWith("/messages") ? { "x-api-key": key } : {}),
       "user-agent": USER_AGENT,
     },
     body,
@@ -1035,6 +1056,7 @@ export async function* streamResponse(
       },
     );
   }
+  await ensureUpstreamMetadata();
   const transport = resolveTransport(parsed.source, parsed.upstreamId);
   const endpoint = resolveEndpoint(parsed.source, transport);
   switch (transport) {

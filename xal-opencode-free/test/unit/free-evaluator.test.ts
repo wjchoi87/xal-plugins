@@ -3,6 +3,8 @@ import {
   evaluateGoFree,
   evaluateZenFree,
   GO_FORCE_PAID,
+  GO_EXCLUDED,
+  ZEN_EXCLUDED,
   ZEN_FORCE_PAID,
   type OverrideInfo,
 } from "../../free-evaluator";
@@ -74,6 +76,17 @@ describe("evaluateZenFree", () => {
     }
   });
 
+  test("EXCLUDED beats explicit zero pricing and -free suffix", () => {
+    ZEN_EXCLUDED.set("gone-free", { reason: "retired" });
+    try {
+      const result = evaluateZenFree(zen("gone-free", { input: 0, output: 0 }));
+      expect(result.status).toBe("excluded");
+      expect(result.reason).toBe("manual-exclude-override");
+    } finally {
+      ZEN_EXCLUDED.delete("gone-free");
+    }
+  });
+
   test("paid pricing beats -free suffix", () => {
     const result = evaluateZenFree(zen("foo-free", { input: 0.02 }));
     expect(result.status).toBe("paid");
@@ -120,6 +133,15 @@ describe("evaluateGoFree", () => {
       expect(result.reason).toBe("manual-paid-override");
     } finally {
       GO_FORCE_PAID.delete("free-thing-free");
+    }
+  });
+
+  test("GO_EXCLUDED beats -free suffix", () => {
+    GO_EXCLUDED.set("gone-free", { reason: "retired" });
+    try {
+      expect(evaluateGoFree(go("gone-free")).status).toBe("excluded");
+    } finally {
+      GO_EXCLUDED.delete("gone-free");
     }
   });
 

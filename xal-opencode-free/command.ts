@@ -45,7 +45,7 @@ function printReport(
   }
   const counts = modelCountByStatus(report);
   print(
-    `  ${report.source === "zen" ? "Zen" : "Go"} Free: ${counts.free}, Dropped: ${counts.paid + counts.unknown}, Unknown: ${counts.unknown}`,
+    `  ${report.source === "zen" ? "Zen" : "Go"} Free: ${counts.free}, Dropped: ${counts.paid + counts.unknown + counts.excluded}, Unknown: ${counts.unknown}`,
   );
 }
 
