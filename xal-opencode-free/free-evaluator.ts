@@ -1,6 +1,6 @@
 import type { NormalizedOpenCodeModel } from "./model-sources";
 
-export type FreeStatus = "free" | "paid" | "unknown";
+export type FreeStatus = "free" | "paid" | "unknown" | "excluded";
 
 export type FreeReason =
   | "explicit-zero-pricing"
@@ -10,6 +10,7 @@ export type FreeReason =
   | "manual-free-override"
   | "explicit-paid-pricing"
   | "manual-paid-override"
+  | "manual-exclude-override"
   | "go-subscription-model"
   | "insufficient-metadata";
 
@@ -51,6 +52,54 @@ export const GO_FORCE_PAID = new Map<string, OverrideInfo>([]);
 
 export const GO_OFFICIAL_FREE = new Map<string, OverrideInfo>([]);
 
+/* Models that may still appear in the live catalog but must never be exposed,
+ * whatever their pricing: retired free models and models that do not speak
+ * any protocol this plugin can stream. Checked before every other rule.
+ *
+ * Policy change:
+ * - before: any catalog entry that looked free (zero pricing, `-free` id) was
+ *   exposed, including retired free models and Jev (a System One
+ *   structured-decision model that only serves `/systemone`)
+ * - after: models listed here are dropped with reason `manual-exclude-override`
+ * - reason: OpenCode marks these `status = "deprecated"` in models.dev
+ *   (providers/opencode*, 2026-10) or serves them on a non-chat protocol, so a
+ *   request from Xal either hits a retiring model or fails outright
+ * - scope: exactly these upstream IDs on their source; every other model keeps
+ *   the normal free evaluation */
+const DEPRECATED: OverrideInfo = {
+  reason: 'Retired free model (models.dev status = "deprecated")',
+  sourceUrl: "https://github.com/sst/models.dev/tree/dev/providers/opencode",
+};
+
+export const ZEN_EXCLUDED = new Map<string, OverrideInfo>([
+  ["deepseek-v4-flash-free", DEPRECATED],
+  ["exo-free", DEPRECATED],
+  ["hy3-free", DEPRECATED],
+  ["laguna-s-2.1-free", DEPRECATED],
+  ["ling-3.0-flash-fin-free", DEPRECATED],
+  ["mimo-v2.5-free", DEPRECATED],
+  ["muse-spark-1.2-contributor-free", DEPRECATED],
+  [
+    "jev-1.13-free",
+    {
+      reason: "System One decision model; only serves /systemone, not chat",
+      sourceUrl: "https://opencode.ai/v2/docs/console/models/#jev",
+    },
+  ],
+]);
+
+export const GO_EXCLUDED = new Map<string, OverrideInfo>([
+  ["step-5-preview-free", DEPRECATED],
+]);
+
+function excluded(): FreeEvaluation {
+  return {
+    status: "excluded",
+    reason: "manual-exclude-override",
+    confidence: "high",
+  };
+}
+
 function isFreeId(id: string): boolean {
   return id.endsWith("-free") || id.includes("-free-");
 }
@@ -79,6 +128,9 @@ function hasAllZeroPricing(model: NormalizedOpenCodeModel): boolean {
 export function evaluateZenFree(
   model: NormalizedOpenCodeModel,
 ): FreeEvaluation {
+  // Priority 0: retired / unsupported models are never exposed.
+  if (ZEN_EXCLUDED.has(model.upstreamId)) return excluded();
+
   // Priority 1: explicit deny override always wins.
   if (ZEN_FORCE_PAID.has(model.upstreamId))
     return {
@@ -139,6 +191,9 @@ export function evaluateZenFree(
  * catalog entries are treated as subscription/paid by default. A Go model is
  * only FREE with positive evidence it is offered free / as a free preview. */
 export function evaluateGoFree(model: NormalizedOpenCodeModel): FreeEvaluation {
+  // Priority 0: retired / unsupported models are never exposed.
+  if (GO_EXCLUDED.has(model.upstreamId)) return excluded();
+
   // Priority 1: explicit deny override always wins.
   if (GO_FORCE_PAID.has(model.upstreamId))
     return {

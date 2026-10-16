@@ -44,16 +44,14 @@ const SOURCE_NAMES: Record<OpenCodeSource, string> = {
 /* Policy change:
  * - before: default model preference was deepseek-v4-flash-free, then
  *   mimo-v2.5-free
- * - after: deepseek-v4.1-flash-free is tried first; the previous entries stay
- *   as fallbacks in the same order
- * - reason: OpenCode added DeepSeek V4.1 Flash Free and marked V4 Flash Free
- *   deprecated (models.dev, 2026-10)
- * - scope: only `defaultModel()` when the user has not picked a model; an
- *   absent preference falls through to the next entry as before */
+ * - after: deepseek-v4.1-flash-free, then glm-5.3-flash-free
+ * - reason: both previous defaults are retired (models.dev status =
+ *   "deprecated", 2026-10) and are now excluded from the catalog
+ * - scope: only `defaultModel()` when the user has not picked a model; when
+ *   neither is available the first exposed model is used, as before */
 const DEFAULT_PREFERENCE = [
   "zen/deepseek-v4.1-flash-free",
-  "zen/deepseek-v4-flash-free",
-  "zen/mimo-v2.5-free",
+  "zen/glm-5.3-flash-free",
 ];
 
 export type CatalogOrigin = "runtime" | "cache" | "failed";
@@ -343,7 +341,12 @@ function debugWarnings(reports: SourceReport[]): string[] {
 export function modelCountByStatus(
   report: SourceReport,
 ): Record<FreeStatus, number> {
-  const counts: Record<FreeStatus, number> = { free: 0, paid: 0, unknown: 0 };
+  const counts: Record<FreeStatus, number> = {
+    free: 0,
+    paid: 0,
+    unknown: 0,
+    excluded: 0,
+  };
   for (const record of report.evaluations) {
     counts[record.evaluation.status] += 1;
   }

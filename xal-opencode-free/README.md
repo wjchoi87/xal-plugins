@@ -77,7 +77,7 @@ OpenCode Free
 
 DeepSeek V4.1 Flash (Zen Free)
 GLM 5.3 Flash (Zen Free)
-MiMo V2.5 (Zen Free)
+MiMo V2.6 Flash (Zen Free)
 Big Pickle (Zen Free)
 ...
 ```
@@ -88,6 +88,7 @@ Model IDs are source-prefixed (`zen/<id>`, `go/<id>`) so the same upstream model
 
 ### Zen Free
 
+0. `ZEN_EXCLUDED` (retired free models, non-chat models such as `jev-1.13-free`) → excluded
 1. `ZEN_FORCE_PAID` override → excluded
 2. Any explicit pricing > 0 → paid / excluded
 3. Explicit all-zero pricing → free
@@ -100,6 +101,7 @@ Model IDs are source-prefixed (`zen/<id>`, `go/<id>`) so the same upstream model
 
 Go defaults to **subscription / not free**. A Go model is only free with positive evidence:
 
+0. `GO_EXCLUDED` (retired free models) → excluded
 1. `GO_FORCE_PAID` override → excluded
 2. Explicit paid/subscription metadata → excluded
 3. Official Go free metadata/list → free
@@ -137,7 +139,7 @@ Defaults work with no configuration. Optional keys under `pluginConfig.opencode-
       "cacheTtlMs": 600000,
       "debugModels": false,
       "modelContextWindows": {
-        "mimo-v2.5-free": 1000000
+        "cat-jam-free": 1048576
       },
       "defaultContextWindow": 131072
     }
@@ -157,23 +159,21 @@ The catalog's `/models` response omits a context length, so the plugin resolves 
 1. `modelContextWindows` config override (exact upstream ID)
 2. a context length parsed from the catalog entry, if any (`context_window` / `context_length` / `contextWindow`)
 3. the bundled family table — verified upstream values, not guesses:
-   | model                           | context window | source                                |
-   | ------------------------------- | -------------- | ------------------------------------- |
-   | `mimo-v2.5-free`                | 1M             | XiaomiMiMo/MiMo-V2.5 (HF)             |
-   | `deepseek-v4-flash-free`        | 1M             | DeepSeek V4 API docs                  |
-   | `deepseek-v4.1-flash-free`      | 200K           | OpenCode free-tier limit (models.dev) |
-   | `glm-5.3-flash-free`            | 200K           | OpenCode free-tier limit (models.dev) |
-   | `ling-3.0-flash-fin-free`       | 262K           | inclusionAI/Ling-3.0-flash (HF)       |
-   | `nemotron-3-ultra-free`         | 262K           | NVIDIA Nemotron 3 Ultra (HF)          |
-   | `nemotron-3.5-lightning-free`   | 1M             | NVIDIA Nemotron 3.5 Lightning (HF)    |
-   | `muse-spark-*.contributor-free` | 1M             | live-probed against Zen               |
-   | `big-pickle`                    | 1M             | operator decision (stealth model)     |
+   | model                                  | context window | source                                |
+   | -------------------------------------- | -------------- | ------------------------------------- |
+   | `deepseek-v4.1-flash-free`             | 200K           | OpenCode free-tier limit (models.dev) |
+   | `glm-5.3-flash-free`                   | 200K           | OpenCode free-tier limit (models.dev) |
+   | `mimo-*` (e.g. `mimo-v2.6-flash-free`) | 200K           | OpenCode free-tier limit (models.dev) |
+   | `nemotron-3-ultra-free`                | 262K           | NVIDIA Nemotron 3 Ultra (HF)          |
+   | `nemotron-3.5-lightning-free`          | 1M             | NVIDIA Nemotron 3.5 Lightning (HF)    |
+   | `muse-spark-1.3-contributor-free`      | 1M             | live-probed against Zen               |
+   | `big-pickle`                           | 1M             | operator decision (stealth model)     |
 4. `defaultContextWindow` config fallback
 5. a conservative 128K catch-all so every exposed free model gets a budget
 
-The reported `contextWindow` is a budget capped at 256K by default, so auto-compaction engages at 80% of the budget. Models whose maximum exceeds the budget (e.g. 1M `deepseek-v4-flash-free`) additionally get a `contextWindows` ladder (`256K / 400K / 600K / 800K / maximum`) that enables `/context-window`.
+The reported `contextWindow` is a budget capped at 256K by default, so auto-compaction engages at 80% of the budget. Models whose maximum exceeds the budget (e.g. 1M `nemotron-3.5-lightning-free`) additionally get a `contextWindows` ladder (`256K / 400K / 600K / 800K / maximum`) that enables `/context-window`.
 
-**Muse Spark contributor models are fixed-context**: they only serve OpenCode's **OpenAI `/responses`** protocol (they return 500 from `chat/completions`), so the plugin routes them to `/responses`. They also reject any context-window parameter (`max_input_tokens` → "does not support configurable context windows"), so the plugin exposes them with a single fixed `contextWindow` (1M) and **no** `contextWindows` ladder — Xal won't try to reconfigure them.
+**Muse Spark 1.3 Contributor is fixed-context**: it only serves OpenCode's **OpenAI `/responses`** protocol (it returns 500 from `chat/completions`), so the plugin routes it to `/responses`. It also rejects any context-window parameter (`max_input_tokens` → "does not support configurable context windows"), so the plugin exposes it with a single fixed `contextWindow` (1M) and **no** `contextWindows` ladder — Xal won't try to reconfigure it.
 
 ## Debug
 

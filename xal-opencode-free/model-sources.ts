@@ -33,18 +33,13 @@ export interface NormalizedOpenCodeModel {
  * are cosmetic only — they never influence free/paid classification. Fallback
  * is a humanized version of the upstream ID. */
 const NAME_OVERRIDES: Record<string, string> = {
-  "deepseek-v4-flash-free": "DeepSeek V4 Flash",
   "deepseek-v4.1-flash-free": "DeepSeek V4.1 Flash",
   "glm-5.3-flash-free": "GLM 5.3 Flash",
+  "mimo-v2.6-flash-free": "MiMo V2.6 Flash",
   "muse-spark-1.3-contributor-free": "Muse Spark 1.3 Contributor",
-  "muse-spark-1.2-contributor-free": "Muse Spark 1.2 Contributor",
-  "mimo-v2.5-free": "MiMo V2.5",
-  "hy3-free": "Hy3",
   "nemotron-3-ultra-free": "Nemotron 3 Ultra",
   "nemotron-3.5-lightning-free": "Nemotron 3.5 Lightning",
-  "laguna-s-2.1-free": "Laguna S 2.1",
   "big-pickle": "Big Pickle",
-  "ox-alpha-free": "Ox Alpha",
 };
 
 /* Per-source display label appended to the Xal-visible name so users always

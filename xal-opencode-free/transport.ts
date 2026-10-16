@@ -42,7 +42,6 @@ const DEFAULT_MAX_TOKENS = 32_000;
  *   live Zen catalog
  * - scope: requests for those exact upstream model IDs */
 const MODEL_TRANSPORT: Record<string, TransportKind> = {
-  "zen/muse-spark-1.2-contributor-free": "responses",
   "zen/muse-spark-1.3-contributor-free": "responses",
 };
 
