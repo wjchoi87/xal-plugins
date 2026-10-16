@@ -47,6 +47,16 @@ describe("catalog parsers", () => {
   test("empty catalog fails", () => {
     expect(() => parseZenModels(catalog([]))).toThrow();
   });
+
+  test("dotted free model ids keep their version in the display name", () => {
+    const models = parseZenModels(
+      catalog(["deepseek-v4.1-flash-free", "glm-5.3-flash-free"]),
+    );
+    expect(models.map((model) => model.displayName)).toEqual([
+      "DeepSeek V4.1 Flash (Zen Free)",
+      "GLM 5.3 Flash (Zen Free)",
+    ]);
+  });
 });
 
 describe("model id routing", () => {

@@ -26,6 +26,9 @@ describe("bundled context table", () => {
       1_048_576,
     );
     expect(bundledContextWindowFor("big-pickle")).toBe(1_000_000);
+    // OpenCode free-tier limit (models.dev opencode provider)
+    expect(bundledContextWindowFor("deepseek-v4.1-flash-free")).toBe(200_000);
+    expect(bundledContextWindowFor("glm-5.3-flash-free")).toBe(200_000);
   });
 
   test("muse spark contributor models are fixed-context (no ladder)", () => {

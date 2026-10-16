@@ -20,6 +20,10 @@ const ZEN_IDS = [
   "mimo-v2.5",
   "big-pickle",
   "deepseek-v4-flash-free",
+  "deepseek-v4.1-flash",
+  "deepseek-v4.1-flash-free",
+  "glm-5.3-flash",
+  "glm-5.3-flash-free",
   "muse-spark-1.2-contributor-free",
   "mimo-v2.5-free",
   "hy3-free",
@@ -79,6 +83,10 @@ describe("core invariant: exposed === free", () => {
       .map((model) => toProviderModelId("zen", model.upstreamId));
     expect(free).toContain("zen/deepseek-v4-flash-free");
     expect(free).toContain("zen/big-pickle");
+    expect(free).toContain("zen/deepseek-v4.1-flash-free");
+    expect(free).toContain("zen/glm-5.3-flash-free");
+    expect(free).not.toContain("zen/deepseek-v4.1-flash");
+    expect(free).not.toContain("zen/glm-5.3-flash");
     expect(free).not.toContain("zen/glm-5.2");
     expect(free).not.toContain("zen/deepseek-v4-pro");
   });

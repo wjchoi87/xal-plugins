@@ -48,6 +48,11 @@ const M = 1_000_000;
  * - muse-spark-*-contributor-free : Meta Muse Spark contributor tier; 1,048,576
  *                  confirmed by live probing (input accepted to ~1,047,798
  *                  tokens, rejected past it)
+ * - deepseek-v4.1-flash-free, glm-5.3-flash-free : OpenCode's own free-tier
+ *                  limit `limit.context = 200_000` (models.dev
+ *                  providers/opencode/models/*.toml, 2026-10). Listed as exact
+ *                  IDs because `deepseek-v4.1-` does not match the
+ *                  `deepseek-v4-` prefix and would otherwise fall to 128K.
  *
  * Values are always overridable via `modelContextWindows`. Unknown families fall
  * through to `DEFAULT_CATCH_ALL`. */
@@ -58,6 +63,8 @@ const PREFIX_CONTEXT_WINDOWS: ReadonlyArray<readonly [string, number]> = [
   ["nemotron-3.5-lightning-free", 1_048_576],
   ["nemotron-3-ultra-free", 262_144],
   ["ling-3.0-flash-fin-free", 262_144],
+  ["deepseek-v4.1-flash-free", 200_000],
+  ["glm-5.3-flash-free", 200_000],
   ["mimo-v2.5-free", M],
   ["mimo-", M],
   ["deepseek-v4-", M],

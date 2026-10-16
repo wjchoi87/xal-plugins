@@ -41,7 +41,20 @@ const SOURCE_NAMES: Record<OpenCodeSource, string> = {
   go: "OpenCode Go",
 };
 
-const DEFAULT_PREFERENCE = ["zen/deepseek-v4-flash-free", "zen/mimo-v2.5-free"];
+/* Policy change:
+ * - before: default model preference was deepseek-v4-flash-free, then
+ *   mimo-v2.5-free
+ * - after: deepseek-v4.1-flash-free is tried first; the previous entries stay
+ *   as fallbacks in the same order
+ * - reason: OpenCode added DeepSeek V4.1 Flash Free and marked V4 Flash Free
+ *   deprecated (models.dev, 2026-10)
+ * - scope: only `defaultModel()` when the user has not picked a model; an
+ *   absent preference falls through to the next entry as before */
+const DEFAULT_PREFERENCE = [
+  "zen/deepseek-v4.1-flash-free",
+  "zen/deepseek-v4-flash-free",
+  "zen/mimo-v2.5-free",
+];
 
 export type CatalogOrigin = "runtime" | "cache" | "failed";
 

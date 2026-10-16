@@ -75,7 +75,8 @@ Models are labeled with their source:
 ```
 OpenCode Free
 
-DeepSeek V4 Flash (Zen Free)
+DeepSeek V4.1 Flash (Zen Free)
+GLM 5.3 Flash (Zen Free)
 MiMo V2.5 (Zen Free)
 Big Pickle (Zen Free)
 ...
@@ -156,15 +157,17 @@ The catalog's `/models` response omits a context length, so the plugin resolves 
 1. `modelContextWindows` config override (exact upstream ID)
 2. a context length parsed from the catalog entry, if any (`context_window` / `context_length` / `contextWindow`)
 3. the bundled family table — verified upstream values, not guesses:
-   | model                           | context window | source                             |
-   | ------------------------------- | -------------- | ---------------------------------- |
-   | `mimo-v2.5-free`                | 1M             | XiaomiMiMo/MiMo-V2.5 (HF)          |
-   | `deepseek-v4-flash-free`        | 1M             | DeepSeek V4 API docs               |
-   | `ling-3.0-flash-fin-free`       | 262K           | inclusionAI/Ling-3.0-flash (HF)    |
-   | `nemotron-3-ultra-free`         | 262K           | NVIDIA Nemotron 3 Ultra (HF)       |
-   | `nemotron-3.5-lightning-free`   | 1M             | NVIDIA Nemotron 3.5 Lightning (HF) |
-   | `muse-spark-*.contributor-free` | 1M             | live-probed against Zen            |
-   | `big-pickle`                    | 1M             | operator decision (stealth model)  |
+   | model                           | context window | source                                |
+   | ------------------------------- | -------------- | ------------------------------------- |
+   | `mimo-v2.5-free`                | 1M             | XiaomiMiMo/MiMo-V2.5 (HF)             |
+   | `deepseek-v4-flash-free`        | 1M             | DeepSeek V4 API docs                  |
+   | `deepseek-v4.1-flash-free`      | 200K           | OpenCode free-tier limit (models.dev) |
+   | `glm-5.3-flash-free`            | 200K           | OpenCode free-tier limit (models.dev) |
+   | `ling-3.0-flash-fin-free`       | 262K           | inclusionAI/Ling-3.0-flash (HF)       |
+   | `nemotron-3-ultra-free`         | 262K           | NVIDIA Nemotron 3 Ultra (HF)          |
+   | `nemotron-3.5-lightning-free`   | 1M             | NVIDIA Nemotron 3.5 Lightning (HF)    |
+   | `muse-spark-*.contributor-free` | 1M             | live-probed against Zen               |
+   | `big-pickle`                    | 1M             | operator decision (stealth model)     |
 4. `defaultContextWindow` config fallback
 5. a conservative 128K catch-all so every exposed free model gets a budget
 
