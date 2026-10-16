@@ -30,7 +30,6 @@ import { isRecord } from "./types";
  * - scope: every free model returned to Xal, both live and cached */
 
 const K = 1024;
-const M = 1_000_000;
 
 /* Family-aware table keyed by upstream model ID (prefix rules match longest
  * first). Values are the actual maximum context window, sourced from upstream
@@ -43,9 +42,9 @@ const M = 1_000_000;
  * - muse-spark-1.3-contributor-free : Meta Muse Spark contributor tier;
  *                  1,048,576 confirmed by live probing (input accepted to
  *                  ~1,047,798 tokens, rejected past it)
- * - deepseek-v4.1-flash-free, glm-5.3-flash-free, mimo-* : OpenCode's own
- *                  free-tier limit `limit.context = 200_000` (models.dev
- *                  providers/opencode/models/*.toml, 2026-10). The free
+ * - deepseek-v4.1-flash-free, glm-5.3-flash-free, mimo-*, big-pickle :
+ *                  OpenCode's own free-tier limit `limit.context = 200_000`
+ *                  (models.dev providers/opencode/models/*.toml, 2026-10). The free
  *                  variants override the paid base model's larger window, so
  *                  the upstream model spec must not be used for them.
  *
@@ -62,6 +61,15 @@ const M = 1_000_000;
  * - scope: context budget/ladder of `mimo-*` free models; a
  *   `modelContextWindows` override still wins
  *
+ * Policy change:
+ * - before: big-pickle resolved to 1M (operator decision; stealth model with
+ *   no public spec), giving a 256K budget and a ladder up to 1M
+ * - after: big-pickle resolves to 200K with no ladder
+ * - reason: OpenCode publishes `limit.context = 200_000` for big-pickle
+ *   (models.dev providers/opencode/models/big-pickle.toml), so a 256K budget
+ *   let conversations pass the upstream limit before compaction engaged
+ * - scope: big-pickle only; a `modelContextWindows` override still wins
+ *
  * Values are always overridable via `modelContextWindows`. Unknown families fall
  * through to `DEFAULT_CATCH_ALL`. */
 const PREFIX_CONTEXT_WINDOWS: ReadonlyArray<readonly [string, number]> = [
@@ -72,9 +80,8 @@ const PREFIX_CONTEXT_WINDOWS: ReadonlyArray<readonly [string, number]> = [
   ["deepseek-v4.1-flash-free", 200_000],
   ["glm-5.3-flash-free", 200_000],
   ["mimo-", 200_000],
+  ["big-pickle", 200_000],
   ["deepseek-", 128 * K],
-  /* big-pickle is a stealth model (no public spec); 1M per operator decision. */
-  ["big-pickle", M],
 ];
 
 /* Conservative fallback so every free model gets a compaction budget even when

@@ -167,7 +167,7 @@ The catalog's `/models` response omits a context length, so the plugin resolves 
    | `nemotron-3-ultra-free`                | 262K           | NVIDIA Nemotron 3 Ultra (HF)          |
    | `nemotron-3.5-lightning-free`          | 1M             | NVIDIA Nemotron 3.5 Lightning (HF)    |
    | `muse-spark-1.3-contributor-free`      | 1M             | live-probed against Zen               |
-   | `big-pickle`                           | 1M             | operator decision (stealth model)     |
+   | `big-pickle`                           | 200K           | OpenCode free-tier limit (models.dev) |
 4. `defaultContextWindow` config fallback
 5. a conservative 128K catch-all so every exposed free model gets a budget
 

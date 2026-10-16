@@ -19,11 +19,11 @@ describe("bundled context table", () => {
     expect(bundledContextWindowFor("muse-spark-1.3-contributor-free")).toBe(
       1_048_576,
     );
-    expect(bundledContextWindowFor("big-pickle")).toBe(1_000_000);
     // OpenCode free-tier limit (models.dev opencode provider)
     expect(bundledContextWindowFor("deepseek-v4.1-flash-free")).toBe(200_000);
     expect(bundledContextWindowFor("glm-5.3-flash-free")).toBe(200_000);
     expect(bundledContextWindowFor("mimo-v2.6-flash-free")).toBe(200_000);
+    expect(bundledContextWindowFor("big-pickle")).toBe(200_000);
   });
 
   test("free-tier 200K models get no ladder beyond the upstream limit", () => {
