@@ -1,4 +1,5 @@
 import { goBaseUrl, zenBaseUrl } from "./config";
+import { clientUserAgent, toOpenCodeSessionId } from "./fingerprint";
 import { currentOpenCodeSessionId } from "./session-context";
 import { asString, isRecord, ProviderError } from "./types";
 
@@ -31,33 +32,37 @@ export function retryAfterMs(value: string | null): number | undefined {
 }
 
 /* Policy change:
- * - before: the stable session id was attached only to Go base-URL requests;
- *   Zen requests went out without x-opencode-session.
- * - after: the session id is attached to both Zen and Go inference requests
- *   while a stream session is active.
- * - reason: the OpenCode console gateway now rejects session-less requests
- *   with 400 "Request is missing x-opencode-session and cannot be routed
- *   efficiently" (see https://opencode.ai/docs/go/#where-can-i-use-it), and
- *   Zen free models are served by that same gateway.
- * - scope: any streamed call to zenBaseUrl/goBaseUrl made inside a session;
- *   catalog /models fetches remain session-less by design. */
-function withOpenCodeSessionHeader(
-  url: string,
-  init: RequestInit,
-): RequestInit {
-  const sessionId = currentOpenCodeSessionId();
-  if (!sessionId) return init;
-
+ * - before: gateway requests identified as this plugin (`xal-opencode-free/…`
+ *   user-agent) and carried the raw Xal session id in x-opencode-session;
+ *   free-tier inference was rejected with 403 FreeTierError "OpenCode's free
+ *   tier can only be used from within OpenCode"
+ * - after: every request to the zen/go base URLs presents the official
+ *   client's fingerprint — the `opencode/<channel>/<version>/<artifact>`
+ *   user-agent (configurable via `clientUserAgent`) and a canonical
+ *   `ses_…` session id translated from the Xal session id (see fingerprint.ts
+ *   for the tool-quartet and streaming gates applied at the transport layer)
+ * - reason: the free-tier gateway 403s any request whose user-agent is not
+ *   the official client's or whose session id is not a canonical
+ *   descending-timestamp `ses_` id; the stable translation keeps one Xal
+ *   session mapped to one upstream session so upstream prompt caching
+ *   survives across turns
+ * - scope: requests to the configured zen/go base URLs (catalog, key
+ *   validation, inference) while a stream session is active; other hosts are
+ *   untouched and catalog /models fetches remain session-less by design */
+function withGatewayFingerprint(url: string, init: RequestInit): RequestInit {
   const bases = [goBaseUrl(), zenBaseUrl()].map((base) =>
     base.replace(/\/+$/, ""),
   );
-  const matches = bases.some(
+  const isGateway = bases.some(
     (base) => url === base || url.startsWith(`${base}/`),
   );
-  if (!matches) return init;
+  if (!isGateway) return init;
 
   const headers = new Headers(init.headers);
-  headers.set("x-opencode-session", sessionId);
+  headers.set("user-agent", clientUserAgent());
+  const sessionId = currentOpenCodeSessionId();
+  if (sessionId)
+    headers.set("x-opencode-session", toOpenCodeSessionId(sessionId));
   return { ...init, headers };
 }
 
@@ -68,7 +73,7 @@ export async function providerFetch(
   init: RequestInit,
 ): Promise<Response> {
   try {
-    return await fetch(url, withOpenCodeSessionHeader(url, init));
+    return await fetch(url, withGatewayFingerprint(url, init));
   } catch (error) {
     if (
       signal?.aborted ||

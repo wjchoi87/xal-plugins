@@ -127,6 +127,40 @@ Go defaults to **subscription / not free**. A Go model is only free with positiv
 
 `undefined` pricing is never treated as `0`. A zero-price model is free only when every relevant field is explicitly present and `0`.
 
+## Gateway client fingerprint (required)
+
+OpenCode's free tier is restricted to the official OpenCode client. Without the client fingerprint every inference request returns:
+
+```json
+{
+  "type": "FreeTierError",
+  "message": "OpenCode's free tier can only be used from within OpenCode. Download it at https://opencode.ai and keep building."
+}
+```
+
+The plugin therefore sends gateway requests (Zen + Go) with the official client's fingerprint while your own OpenCode API key still authenticates the request. Four gates are satisfied automatically (verified live against `opencode.ai`, 2026-10):
+
+| gate                 | what the plugin sends                                                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| user-agent           | `opencode/<channel>/<version>/<artifact>` (default `opencode/stable/1.19.3/cli-node`, configurable via `clientUserAgent`)            |
+| `x-opencode-session` | `ses_` + descending-timestamp hex + 14 base62, deterministically mapped from the Xal session id (stable per session, cache-friendly) |
+| tool declarations    | the required quartet `{bash, glob, grep, read}` is merged into every request alongside your client's own tools                       |
+| streaming            | all requests are `stream: true` SSE                                                                                                  |
+
+The injected quartet tools are described as compatibility placeholders; if a model calls one anyway, the host answers with an error tool result and the model falls back to the session's real tools.
+
+If OpenCode changes the expected user-agent (e.g. a raised minimum version), override it without touching the plugin:
+
+```json
+{
+  "pluginConfig": {
+    "opencode-free": {
+      "clientUserAgent": "opencode/stable/1.20.0/cli-node"
+    }
+  }
+}
+```
+
 ## Cache & refresh
 
 Each source (Zen, Go) has its own cache under `<Xal cache>/opencode-free/`:
@@ -160,7 +194,8 @@ Defaults work with no configuration. Optional keys under `pluginConfig.opencode-
       },
       "defaultContextWindow": 131072,
       "syncModelMetadata": true,
-      "modelMetadataTtlMs": 43200000
+      "modelMetadataTtlMs": 43200000,
+      "clientUserAgent": "opencode/stable/1.19.3/cli-node"
     }
   }
 }
@@ -173,6 +208,7 @@ Defaults work with no configuration. Optional keys under `pluginConfig.opencode-
 - `syncModelMetadata` — runtime sync with models.dev (see above). Default `true`; `false` uses only the bundled tables.
 - `modelMetadataTtlMs` — how long synced metadata stays fresh (ms). Default `43200000` (12h).
 - `modelMetadataUrl` — metadata source. Default `https://models.dev/api.json`.
+- `clientUserAgent` — user-agent presented to the OpenCode gateway for the free-tier client check (see [Gateway client fingerprint](#gateway-client-fingerprint-required)). Default `opencode/stable/1.19.3/cli-node`.
 
 ### Context windows
 

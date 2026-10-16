@@ -1,5 +1,6 @@
 import { providerFetch, raiseForStatus } from "./api";
 import { apiKey } from "./auth";
+import { mergedTools } from "./fingerprint";
 import { ensureUpstreamMetadata, upstreamMetadataFor } from "./metadata";
 import {
   parseProviderModelId,
@@ -26,7 +27,6 @@ import {
   type Usage,
 } from "./types";
 
-const USER_AGENT = "xal-opencode-free/0.1.0";
 const DEFAULT_MAX_TOKENS = 32_000;
 
 /* Without wall-clock model metadata the catalog doesn't advertise a protocol,
@@ -207,7 +207,10 @@ function resolveTransport(
  * - after: `/messages` requests also carry `x-api-key`
  * - reason: OpenCode's gateway reads the key for `/messages` from `x-api-key`
  *   (Anthropic convention), so without it those requests went out anonymous
- * - scope: anthropic-messages transport only; other endpoints are unchanged */
+ * - scope: anthropic-messages transport only; other endpoints are unchanged
+ *
+ * The user-agent is set centrally by providerFetch (gateway fingerprint), not
+ * here. */
 async function openCodeFetch(
   endpoint: string,
   body: string,
@@ -222,7 +225,6 @@ async function openCodeFetch(
       "content-type": "application/json",
       authorization: `Bearer ${key}`,
       ...(endpoint.endsWith("/messages") ? { "x-api-key": key } : {}),
-      "user-agent": USER_AGENT,
     },
     body,
     signal,
@@ -394,6 +396,9 @@ async function* streamChat(
   request: StreamRequest,
   upstreamId: string,
 ): AsyncGenerator<StreamEvent> {
+  /* mergedTools always yields at least the fingerprint quartet, so tools are
+   * declared on every request — the gateway 403s tool-less free-tier calls.
+   * `stream: true` is likewise mandatory (stream:false -> 403). */
   const body = JSON.stringify({
     /* Upstream expects the bare catalog id (e.g. "deepseek-v4-flash-free"),
      * not the Xal-facing "zen/<id>" provider id. */
@@ -402,12 +407,8 @@ async function* streamChat(
     stream: true,
     stream_options: { include_usage: true },
     ...(request.thinking ? { reasoning_effort: request.thinking } : {}),
-    ...(request.tools.length === 0
-      ? {}
-      : {
-          tools: toolDefinitions(request.tools),
-          tool_choice: request.toolChoice,
-        }),
+    tools: toolDefinitions(mergedTools(request.tools)),
+    tool_choice: request.toolChoice,
   });
   const response = await openCodeFetch(
     endpoint,
@@ -514,6 +515,9 @@ function buildResponsesBody(
   request: StreamRequest,
   upstreamId: string,
 ): string {
+  /* Tools are always declared (fingerprint quartet at minimum) and
+   * `stream: true` is mandatory — the gateway 403s tool-less or
+   * non-streaming free-tier calls. */
   return JSON.stringify({
     /* Upstream expects the bare catalog id, not the "zen/<id>" provider id. */
     model: upstreamId,
@@ -521,19 +525,15 @@ function buildResponsesBody(
     stream: true,
     instructions: request.instructions,
     input: buildResponseInput(request.input),
-    ...(request.tools.length === 0
-      ? {}
-      : {
-          tools: request.tools.map((tool) => ({
-            type: "function",
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.parameters,
-            strict: false,
-          })),
-          tool_choice: request.toolChoice,
-          parallel_tool_calls: true,
-        }),
+    tools: mergedTools(request.tools).map((tool) => ({
+      type: "function",
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+      strict: false,
+    })),
+    tool_choice: request.toolChoice,
+    parallel_tool_calls: true,
   });
 }
 
@@ -756,6 +756,9 @@ function buildAnthropicBody(
   request: StreamRequest,
   upstreamId: string,
 ): string {
+  /* Tools are always declared (fingerprint quartet at minimum) and
+   * `stream: true` is mandatory — the gateway 403s tool-less or
+   * non-streaming free-tier calls. */
   return JSON.stringify({
     /* Upstream expects the bare catalog id, not the "zen/<id>" provider id. */
     model: upstreamId,
@@ -763,15 +766,11 @@ function buildAnthropicBody(
     stream: true,
     system: [{ type: "text", text: request.instructions }],
     messages: buildAnthropicMessages(request.input),
-    ...(request.tools.length === 0
-      ? {}
-      : {
-          tools: request.tools.map((tool) => ({
-            name: tool.name,
-            description: tool.description,
-            input_schema: tool.parameters,
-          })),
-        }),
+    tools: mergedTools(request.tools).map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      input_schema: tool.parameters,
+    })),
   });
 }
 

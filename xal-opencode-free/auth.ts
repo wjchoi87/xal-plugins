@@ -5,7 +5,6 @@ import { clientRuntime } from "./runtime";
 import type { ApiKeyCredential, ConnectContext } from "./types";
 
 const VALIDATE_TIMEOUT_MS = 10_000;
-const USER_AGENT = "xal-opencode-free/0.1.0";
 
 export type ZenAccess = "available" | "unauthorized" | "unavailable";
 export type GoAccess =
@@ -32,6 +31,7 @@ async function probeSource(
   key: string,
 ): Promise<ZenAccess | GoAccess> {
   const name = source === "zen" ? "OpenCode Zen" : "OpenCode Go";
+  /* The gateway user-agent is applied centrally by providerFetch. */
   const response = await providerFetch(
     name,
     AbortSignal.timeout(VALIDATE_TIMEOUT_MS),
@@ -40,7 +40,6 @@ async function probeSource(
       headers: {
         accept: "application/json",
         authorization: `Bearer ${key}`,
-        "user-agent": USER_AGENT,
       },
     },
   );

@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { DEFAULT_CLIENT_USER_AGENT } from "../../config";
+import { mergedTools, toOpenCodeSessionId } from "../../fingerprint";
 import { openCodeFreeProvider } from "../../provider";
 import { configureRuntime } from "../../runtime";
 import { currentOpenCodeSessionId } from "../../session-context";
@@ -111,15 +113,26 @@ describe("provider session stream lifecycle", () => {
   });
 
   test("concurrent Go and Zen sessions stay isolated", async () => {
-    const seen: { model: string; sessionId: string | null }[] = [];
+    const seen: {
+      model: string;
+      sessionId: string | null;
+      userAgent: string | null;
+      toolNames: string[];
+    }[] = [];
     const bodies: ReadableStream<Uint8Array>[] = [];
     globalThis.fetch = (async (
       _input: Parameters<typeof fetch>[0],
       init?: RequestInit,
     ) => {
+      const headers = new Headers(init?.headers);
+      const parsed = JSON.parse(init?.body as string);
       seen.push({
-        model: JSON.parse(init?.body as string).model,
-        sessionId: new Headers(init?.headers).get("x-opencode-session"),
+        model: parsed.model,
+        sessionId: headers.get("x-opencode-session"),
+        userAgent: headers.get("user-agent"),
+        toolNames: (parsed.tools as { function: { name: string } }[]).map(
+          (tool) => tool.function.name,
+        ),
       });
       const body = streamBody();
       bodies.push(body);
@@ -151,14 +164,17 @@ describe("provider session stream lifecycle", () => {
     }
 
     expect(seen).toHaveLength(30);
+    const expectedTools = mergedTools([]).map((tool) => tool.name);
     for (const entry of seen) {
       expect(entry.sessionId).toBe(
         entry.model === "ox-alpha-free"
-          ? "session-a"
+          ? toOpenCodeSessionId("session-a")
           : entry.model === "haihai-free"
-            ? "session-b"
-            : "session-zen",
+            ? toOpenCodeSessionId("session-b")
+            : toOpenCodeSessionId("session-zen"),
       );
+      expect(entry.userAgent).toBe(DEFAULT_CLIENT_USER_AGENT);
+      expect(entry.toolNames).toEqual(expectedTools);
     }
     expect(bodies.every((body) => !body.locked)).toBe(true);
   });
