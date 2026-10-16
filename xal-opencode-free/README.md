@@ -7,6 +7,21 @@ OpenCode Free provider plugin for [Xal](https://github.com/xal-sh/xal). It expos
 
 Paid Zen models and general Go subscription models never appear. The free set is driven by the live OpenCode catalogs, so new free models show up on `/models` refresh without a plugin update.
 
+## Automatic model metadata sync
+
+OpenCode's `/models` catalogs list only model IDs. Everything else the plugin needs — each model's context limit, whether it has been retired, and which protocol it is served on — is synced at runtime from [models.dev](https://models.dev) (`opencode` = Zen, `opencode-go` = Go), the same metadata OpenCode's own client uses. No plugin update or reinstall is needed when OpenCode changes a model:
+
+| upstream change                                                  | what the plugin does                                                    |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| new free model / changed context limit                           | uses the published `limit.context` for compaction and `/context-window` |
+| model marked `status = "deprecated"`                             | hides it from `/models` (reason `upstream-deprecated`)                  |
+| model served on `/responses`/`/messages`                         | routes requests to that endpoint automatically                          |
+| model on a protocol the plugin can't stream (System One, Gemini) | hides it (reason `unsupported-protocol`)                                |
+
+- Synced with the catalog, cached for **12 hours** (`modelMetadataTtlMs`); `/models` refresh forces a re-sync.
+- Only the OpenCode entries are kept (a few KB, `<runtime-cache>/opencode-free/models-dev-metadata.json`). Your OpenCode API key is never sent to models.dev.
+- If models.dev is unreachable the last synced snapshot is used, then the bundled tables below.
+
 ## What "FREE" means here
 
 FREE means a model that OpenCode currently serves on that source without a separate token charge or _without consuming your Go subscription allowance_ (i.e. an explicitly free / free-preview model).
@@ -88,7 +103,7 @@ Model IDs are source-prefixed (`zen/<id>`, `go/<id>`) so the same upstream model
 
 ### Zen Free
 
-0. `ZEN_EXCLUDED` (retired free models, non-chat models such as `jev-1.13-free`) → excluded
+0. Retired or unservable per synced metadata, or listed in `ZEN_EXCLUDED` (offline fallback, e.g. `jev-1.13-free`) → excluded
 1. `ZEN_FORCE_PAID` override → excluded
 2. Any explicit pricing > 0 → paid / excluded
 3. Explicit all-zero pricing → free
@@ -101,7 +116,7 @@ Model IDs are source-prefixed (`zen/<id>`, `go/<id>`) so the same upstream model
 
 Go defaults to **subscription / not free**. A Go model is only free with positive evidence:
 
-0. `GO_EXCLUDED` (retired free models) → excluded
+0. Retired or unservable per synced metadata, or listed in `GO_EXCLUDED` (offline fallback) → excluded
 1. `GO_FORCE_PAID` override → excluded
 2. Explicit paid/subscription metadata → excluded
 3. Official Go free metadata/list → free
@@ -119,6 +134,7 @@ Each source (Zen, Go) has its own cache under `<Xal cache>/opencode-free/`:
 <runtime-cache>/opencode-free/
 ├── zen-models.json
 ├── go-models.json
+├── models-dev-metadata.json  (synced context limits / retirements / protocols)
 └── merged-free-models.json   (last known-good fallback)
 ```
 
@@ -141,7 +157,9 @@ Defaults work with no configuration. Optional keys under `pluginConfig.opencode-
       "modelContextWindows": {
         "cat-jam-free": 1048576
       },
-      "defaultContextWindow": 131072
+      "defaultContextWindow": 131072,
+      "syncModelMetadata": true,
+      "modelMetadataTtlMs": 43200000
     }
   }
 }
@@ -151,14 +169,18 @@ Defaults work with no configuration. Optional keys under `pluginConfig.opencode-
 - `debugModels` — append dropped-model diagnostics to `/models` warnings.
 - `modelContextWindows` — exact model ID (upstream ID, no `zen/` prefix) → maximum context window in tokens. Overrides any catalog-provided value and the bundled table. Use this for models whose context the catalog doesn't report.
 - `defaultContextWindow` — fallback maximum for models unknown to the bundled table.
+- `syncModelMetadata` — runtime sync with models.dev (see above). Default `true`; `false` uses only the bundled tables.
+- `modelMetadataTtlMs` — how long synced metadata stays fresh (ms). Default `43200000` (12h).
+- `modelMetadataUrl` — metadata source. Default `https://models.dev/api.json`.
 
 ### Context windows
 
-The catalog's `/models` response omits a context length, so the plugin resolves each free model's context window from **verified upstream specs** to keep Xal's compaction, `/compaction-limit`, and `/context-window` working. Source precedence:
+The catalog's `/models` response omits a context length, so the plugin resolves each free model's context window to keep Xal's compaction, `/compaction-limit`, and `/context-window` working. Source precedence:
 
 1. `modelContextWindows` config override (exact upstream ID)
 2. a context length parsed from the catalog entry, if any (`context_window` / `context_length` / `contextWindow`)
-3. the bundled family table — verified upstream values, not guesses:
+3. the synced models.dev `limit.context` (see [Automatic model metadata sync](#automatic-model-metadata-sync))
+4. the bundled family table (offline fallback) — verified upstream values, not guesses:
    | model                                  | context window | source                                |
    | -------------------------------------- | -------------- | ------------------------------------- |
    | `deepseek-v4.1-flash-free`             | 200K           | OpenCode free-tier limit (models.dev) |
@@ -168,8 +190,8 @@ The catalog's `/models` response omits a context length, so the plugin resolves 
    | `nemotron-3.5-lightning-free`          | 1M             | NVIDIA Nemotron 3.5 Lightning (HF)    |
    | `muse-spark-1.3-contributor-free`      | 1M             | live-probed against Zen               |
    | `big-pickle`                           | 200K           | OpenCode free-tier limit (models.dev) |
-4. `defaultContextWindow` config fallback
-5. a conservative 128K catch-all so every exposed free model gets a budget
+5. `defaultContextWindow` config fallback
+6. a conservative 128K catch-all so every exposed free model gets a budget
 
 The reported `contextWindow` is a budget capped at 256K by default, so auto-compaction engages at 80% of the budget. Models whose maximum exceeds the budget (e.g. 1M `nemotron-3.5-lightning-free`) additionally get a `contextWindows` ladder (`256K / 400K / 600K / 800K / maximum`) that enables `/context-window`.
 

@@ -10,6 +10,7 @@ import {
 import {
   modelsEndpoint,
   parseGoModels,
+  parseProviderModelId,
   parseZenModels,
   toProviderModelId,
   type NormalizedOpenCodeModel,
@@ -22,6 +23,11 @@ import {
   writeMergedCache,
   writeSourceCache,
 } from "./cache";
+import {
+  syncUpstreamMetadata,
+  upstreamMetadataFor,
+  type MetadataReport,
+} from "./metadata";
 import {
   bundledContextWindowFor,
   catchAllContextWindow,
@@ -88,7 +94,8 @@ function evaluateModels(
 
 /* Fill in the context window the catalog may never report. Source precedence
  * (see context.ts): config override, then a catalog-provided value, then the
- * bundled family table, then `defaultContextWindow`, then a conservative
+ * synced models.dev limit (metadata.ts), then the bundled family table, then
+ * `defaultContextWindow`, then a conservative
  * catch-all so compaction always has a budget. Models that cannot have their
  * context window reconfigured (e.g. Muse Spark — see `isFixedContextOnly`) are
  * exposed with a single fixed `contextWindow` and no `contextWindows` ladder, so
@@ -97,6 +104,7 @@ function withContextWindow(model: NormalizedOpenCodeModel): ModelInfo {
   const maximum =
     configOverrideFor(model.upstreamId) ??
     model.contextWindow ??
+    upstreamMetadataFor(model.source, model.upstreamId)?.contextWindow ??
     bundledContextWindowFor(model.upstreamId) ??
     fallbackContextWindow() ??
     catchAllContextWindow();
@@ -125,13 +133,17 @@ function toModelInfo(model: NormalizedOpenCodeModel): ModelInfo {
   return withContextWindow(model);
 }
 
+/* Evaluation needs the synced metadata, so every path waits for it; the
+ * catalog fetch itself overlaps with the metadata sync. */
 async function fetchSource(
   source: OpenCodeSource,
   profileId: string,
   refresh: boolean,
+  metadataReady: Promise<MetadataReport>,
 ): Promise<SourceReport> {
   const cached = await readSourceCache(source);
   if (!refresh && cached !== undefined && isCacheFresh(cached)) {
+    await metadataReady;
     return {
       source,
       origin: "cache",
@@ -156,9 +168,11 @@ async function fetchSource(
     const raw: unknown = await response.json();
     const parsed = source === "zen" ? parseZenModels(raw) : parseGoModels(raw);
     await writeSourceCache(source, parsed);
+    await metadataReady;
     return { source, origin: "runtime", evaluations: evaluateModels(parsed) };
   } catch (error) {
     if (cached) {
+      await metadataReady;
       return {
         source,
         origin: "cache",
@@ -212,8 +226,18 @@ function dedupe(models: ModelInfo[]): ModelInfo[] {
   return out;
 }
 
-function buildWarnings(reports: SourceReport[]): string[] {
+function buildWarnings(
+  reports: SourceReport[],
+  metadata: MetadataReport,
+): string[] {
   const warnings: string[] = [];
+  if (metadata.origin === "failed") {
+    warnings.push(
+      "models.dev metadata unavailable; using bundled context limits.",
+    );
+  } else if (metadata.origin === "cache" && metadata.error) {
+    warnings.push("models.dev metadata refresh failed; using cached metadata.");
+  }
   for (const report of reports) {
     const label = sourceName(report.source);
     if (report.origin === "runtime") {
@@ -233,12 +257,15 @@ async function resolveCatalog(
 ): Promise<{
   models: ModelInfo[];
   reports: SourceReport[];
+  metadata: MetadataReport;
   fallback: boolean;
 }> {
+  const metadataReady = syncUpstreamMetadata(refresh);
   const reports: SourceReport[] = [
-    await fetchSource("zen", profileId, refresh),
-    await fetchSource("go", profileId, refresh),
+    await fetchSource("zen", profileId, refresh, metadataReady),
+    await fetchSource("go", profileId, refresh, metadataReady),
   ];
+  const metadata = await metadataReady;
   let models = sortModels(dedupe(reports.flatMap(freeModels)));
 
   // Persist the last known-good merged list when we produced a fresh (non
@@ -255,12 +282,23 @@ async function resolveCatalog(
   if (models.length === 0 && anyRuntime === false) {
     const merged = await readMergedCache();
     if (merged && merged.models.length > 0) {
-      models = merged.models.map((model) => ({ ...model, kind: "text" }));
-      fallback = true;
+      models = merged.models
+        .filter((model) => !isRetiredUpstream(model.id))
+        .map((model) => ({ ...model, kind: "text" }));
+      fallback = models.length > 0;
     }
   }
   void anyRuntime;
-  return { models, reports, fallback };
+  return { models, reports, metadata, fallback };
+}
+
+/* The merged fallback list was written before the latest metadata sync; drop
+ * anything that has since been retired or found unservable. */
+function isRetiredUpstream(providerModelId: string): boolean {
+  const parsed = parseProviderModelId(providerModelId);
+  if (!parsed) return false;
+  const upstream = upstreamMetadataFor(parsed.source, parsed.upstreamId);
+  return upstream?.deprecated === true || upstream?.protocol === "unsupported";
 }
 
 export async function listModels(
@@ -269,11 +307,11 @@ export async function listModels(
 ): Promise<ModelCatalog> {
   lastProfileId = profileId;
   try {
-    const { models, reports, fallback } = await resolveCatalog(
+    const { models, reports, metadata, fallback } = await resolveCatalog(
       profileId,
       refresh,
     );
-    const warnings = buildWarnings(reports);
+    const warnings = buildWarnings(reports, metadata);
     if (debugModels()) {
       warnings.push(...debugWarnings(reports));
     }

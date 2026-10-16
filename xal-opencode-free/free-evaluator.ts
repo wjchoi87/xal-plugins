@@ -1,3 +1,4 @@
+import { upstreamMetadataFor, type UpstreamModelMetadata } from "./metadata";
 import type { NormalizedOpenCodeModel } from "./model-sources";
 
 export type FreeStatus = "free" | "paid" | "unknown" | "excluded";
@@ -11,6 +12,8 @@ export type FreeReason =
   | "explicit-paid-pricing"
   | "manual-paid-override"
   | "manual-exclude-override"
+  | "upstream-deprecated"
+  | "unsupported-protocol"
   | "go-subscription-model"
   | "insufficient-metadata";
 
@@ -55,6 +58,8 @@ export const GO_OFFICIAL_FREE = new Map<string, OverrideInfo>([]);
 /* Models that may still appear in the live catalog but must never be exposed,
  * whatever their pricing: retired free models and models that do not speak
  * any protocol this plugin can stream. Checked before every other rule.
+ * models.dev metadata (metadata.ts) detects both cases automatically; this list
+ * is the offline fallback for when that sync is unavailable or disabled.
  *
  * Policy change:
  * - before: any catalog entry that looked free (zero pricing, `-free` id) was
@@ -92,12 +97,21 @@ export const GO_EXCLUDED = new Map<string, OverrideInfo>([
   ["step-5-preview-free", DEPRECATED],
 ]);
 
-function excluded(): FreeEvaluation {
-  return {
-    status: "excluded",
-    reason: "manual-exclude-override",
-    confidence: "high",
-  };
+function excluded(
+  reason: FreeReason = "manual-exclude-override",
+): FreeEvaluation {
+  return { status: "excluded", reason, confidence: "high" };
+}
+
+/* Synced upstream metadata: a retired model or one served on a protocol this
+ * plugin cannot stream is never exposed, whatever its pricing. */
+function upstreamExclusion(
+  upstream: UpstreamModelMetadata | undefined,
+): FreeEvaluation | undefined {
+  if (upstream?.deprecated) return excluded("upstream-deprecated");
+  if (upstream?.protocol === "unsupported")
+    return excluded("unsupported-protocol");
+  return undefined;
 }
 
 function isFreeId(id: string): boolean {
@@ -127,9 +141,12 @@ function hasAllZeroPricing(model: NormalizedOpenCodeModel): boolean {
 /* Evaluate the Zen free status of a normalised model. */
 export function evaluateZenFree(
   model: NormalizedOpenCodeModel,
+  upstream?: UpstreamModelMetadata,
 ): FreeEvaluation {
   // Priority 0: retired / unsupported models are never exposed.
   if (ZEN_EXCLUDED.has(model.upstreamId)) return excluded();
+  const upstreamExcluded = upstreamExclusion(upstream);
+  if (upstreamExcluded) return upstreamExcluded;
 
   // Priority 1: explicit deny override always wins.
   if (ZEN_FORCE_PAID.has(model.upstreamId))
@@ -190,9 +207,14 @@ export function evaluateZenFree(
 /* Evaluate the Go free status. Go is a paid subscription product, so its
  * catalog entries are treated as subscription/paid by default. A Go model is
  * only FREE with positive evidence it is offered free / as a free preview. */
-export function evaluateGoFree(model: NormalizedOpenCodeModel): FreeEvaluation {
+export function evaluateGoFree(
+  model: NormalizedOpenCodeModel,
+  upstream?: UpstreamModelMetadata,
+): FreeEvaluation {
   // Priority 0: retired / unsupported models are never exposed.
   if (GO_EXCLUDED.has(model.upstreamId)) return excluded();
+  const upstreamExcluded = upstreamExclusion(upstream);
+  if (upstreamExcluded) return upstreamExcluded;
 
   // Priority 1: explicit deny override always wins.
   if (GO_FORCE_PAID.has(model.upstreamId))
@@ -239,11 +261,18 @@ export function evaluateGoFree(model: NormalizedOpenCodeModel): FreeEvaluation {
 }
 
 /* Dispatch to the source-appropriate evaluator. Free exposure requires the
- * status to be exactly "free". */
-export function evaluateFree(model: NormalizedOpenCodeModel): FreeEvaluation {
+ * status to be exactly "free". Upstream metadata defaults to the current
+ * models.dev snapshot (none until a sync has run). */
+export function evaluateFree(
+  model: NormalizedOpenCodeModel,
+  upstream: UpstreamModelMetadata | undefined = upstreamMetadataFor(
+    model.source,
+    model.upstreamId,
+  ),
+): FreeEvaluation {
   return model.source === "zen"
-    ? evaluateZenFree(model)
-    : evaluateGoFree(model);
+    ? evaluateZenFree(model, upstream)
+    : evaluateGoFree(model, upstream);
 }
 
 export function isExposedFree(evaluation: FreeEvaluation): boolean {

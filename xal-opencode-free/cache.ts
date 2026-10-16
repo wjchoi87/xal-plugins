@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { UpstreamMetadata } from "./metadata";
 import type { NormalizedOpenCodeModel, OpenCodeSource } from "./model-sources";
 import { isRecord } from "./types";
 import { clientRuntime } from "./runtime";
@@ -113,4 +114,50 @@ export async function writeMergedCache(entries: MergedEntry[]): Promise<void> {
   };
   await mkdir(cacheDir(), { recursive: true });
   await writeFile(mergedCachePath(), JSON.stringify(entry), "utf8");
+}
+
+/* Reduced models.dev snapshot (only the OpenCode providers' context limits,
+ * retirement flags, and protocols) — a few KB instead of the full catalog. */
+export interface MetadataCache {
+  version: 1;
+  fetchedAt: number;
+  sources: UpstreamMetadata;
+}
+
+const METADATA_CACHE_VERSION = 1 as const;
+
+function metadataCachePath(): string {
+  return join(cacheDir(), "models-dev-metadata.json");
+}
+
+export async function readMetadataCache(): Promise<MetadataCache | undefined> {
+  try {
+    const raw: unknown = JSON.parse(
+      await readFile(metadataCachePath(), "utf8"),
+    );
+    if (!isRecord(raw)) return undefined;
+    if (
+      raw.version !== METADATA_CACHE_VERSION ||
+      typeof raw.fetchedAt !== "number" ||
+      !isRecord(raw.sources) ||
+      !isRecord(raw.sources.zen) ||
+      !isRecord(raw.sources.go)
+    )
+      return undefined;
+    return raw as unknown as MetadataCache;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function writeMetadataCache(
+  sources: UpstreamMetadata,
+): Promise<void> {
+  const entry: MetadataCache = {
+    version: METADATA_CACHE_VERSION,
+    fetchedAt: Date.now(),
+    sources,
+  };
+  await mkdir(cacheDir(), { recursive: true });
+  await writeFile(metadataCachePath(), JSON.stringify(entry), "utf8");
 }

@@ -10,9 +10,10 @@ import { isRecord } from "./types";
  *
  *   1. `modelContextWindows` config override for the exact upstream model ID
  *   2. the raw context window parsed from the catalog entry (if any)
- *   3. the bundled table (family-aware)
- *   4. `defaultContextWindow` config fallback (when bundled table can't tell)
- *   5. a conservative 128K catch-all so compaction always engages
+ *   3. the `limit.context` synced from models.dev (metadata.ts)
+ *   4. the bundled table (family-aware; offline fallback for step 3)
+ *   5. `defaultContextWindow` config fallback (when bundled table can't tell)
+ *   6. a conservative 128K catch-all so compaction always engages
  *
  * Source precedence is deliberately catalog-first: unlike the Alibaba/z.ai
  * endpoints (which never return a context length), OpenCode may eventually
