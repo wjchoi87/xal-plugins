@@ -1,5 +1,6 @@
 import { asNumber, asString, isRecord } from "./types";
 import { goBaseUrl, zenBaseUrl } from "./config";
+import { upstreamMetadataFor } from "./metadata";
 
 export type OpenCodeSource = "zen" | "go";
 
@@ -48,29 +49,49 @@ export function sourceLabel(source: OpenCodeSource): string {
   return source === "zen" ? "Zen Free" : "Go Free";
 }
 
+/* Dots are kept so version numbers survive ("mimo-v2.6-flash-free" ->
+ * "Mimo V2.6 Flash", not "Mimo V2 6 Flash"). */
 function humanize(id: string): string {
   const base = id
     .replace(/-free(-|$)/g, (match) => (match === "-free" ? "" : "-"))
-    .replace(/[-_.]+/g, " ")
+    .replace(/[-_]+/g, " ")
     .trim();
   return base === ""
     ? id
     : base
         .split(" ")
-        .map((part) => {
-          const lower = part.toLowerCase();
-          return /^(v)?[0-9]+(\.[0-9]+)?$/.test(lower) || /^v[0-9]/.test(lower)
-            ? part
-            : part.charAt(0).toUpperCase() + part.slice(1);
-        })
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(" ");
 }
 
+/* The official name synced from models.dev, minus the trailing "Free" the
+ * source label already conveys ("GLM-5.3-Flash Free" -> "GLM-5.3-Flash"). */
+function syncedName(
+  source: OpenCodeSource,
+  upstreamId: string,
+): string | undefined {
+  const name = upstreamMetadataFor(source, upstreamId)?.name;
+  const trimmed = name?.replace(/\s+free$/i, "").trim();
+  return trimmed ? trimmed : undefined;
+}
+
+/* Policy change:
+ * - before: names came from NAME_OVERRIDES, else a humanized ID that split
+ *   version numbers on dots ("Nemotron 3 5 Super Vl")
+ * - after: NAME_OVERRIDES, then the official models.dev name, then the
+ *   humanized ID (dots kept)
+ * - reason: new free models should show their real names without a plugin
+ *   update; curated overrides still win where the official name drops
+ *   meaning (e.g. Muse Spark's "Contributor" tier)
+ * - scope: display names only; IDs, routing, and free evaluation unchanged */
 export function displayNameFor(
   source: OpenCodeSource,
   upstreamId: string,
 ): string {
-  const base = NAME_OVERRIDES[upstreamId] ?? humanize(upstreamId);
+  const base =
+    NAME_OVERRIDES[upstreamId] ??
+    syncedName(source, upstreamId) ??
+    humanize(upstreamId);
   return `${base} (${sourceLabel(source)})`;
 }
 

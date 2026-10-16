@@ -9,11 +9,12 @@ Paid Zen models and general Go subscription models never appear. The free set is
 
 ## Automatic model metadata sync
 
-OpenCode's `/models` catalogs list only model IDs. Everything else the plugin needs — each model's context limit, whether it has been retired, and which protocol it is served on — is synced at runtime from [models.dev](https://models.dev) (`opencode` = Zen, `opencode-go` = Go), the same metadata OpenCode's own client uses. No plugin update or reinstall is needed when OpenCode changes a model:
+OpenCode's `/models` catalogs list only model IDs. Everything else the plugin needs — each model's display name, context limit, whether it has been retired, and which protocol it is served on — is synced at runtime from [models.dev](https://models.dev) (`opencode` = Zen, `opencode-go` = Go), the same metadata OpenCode's own client uses. No plugin update or reinstall is needed when OpenCode changes a model:
 
 | upstream change                                                  | what the plugin does                                                    |
 | ---------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | new free model / changed context limit                           | uses the published `limit.context` for compaction and `/context-window` |
+| new free model name                                              | shows the official name (e.g. `Nemotron 3.5 Super VL (Zen Free)`)       |
 | model marked `status = "deprecated"`                             | hides it from `/models` (reason `upstream-deprecated`)                  |
 | model served on `/responses`/`/messages`                         | routes requests to that endpoint automatically                          |
 | model on a protocol the plugin can't stream (System One, Gemini) | hides it (reason `unsupported-protocol`)                                |

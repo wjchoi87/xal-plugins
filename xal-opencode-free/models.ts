@@ -8,6 +8,7 @@ import {
   type FreeStatus,
 } from "./free-evaluator";
 import {
+  displayNameFor,
   modelsEndpoint,
   parseGoModels,
   parseProviderModelId,
@@ -100,6 +101,8 @@ function evaluateModels(
  * context window reconfigured (e.g. Muse Spark — see `isFixedContextOnly`) are
  * exposed with a single fixed `contextWindow` and no `contextWindows` ladder, so
  * Xal never tries to reconfigure them. */
+/* Names are derived here rather than taken from `model.displayName` so a
+ * cached catalog picks up the latest synced official names too. */
 function withContextWindow(model: NormalizedOpenCodeModel): ModelInfo {
   const maximum =
     configOverrideFor(model.upstreamId) ??
@@ -112,7 +115,7 @@ function withContextWindow(model: NormalizedOpenCodeModel): ModelInfo {
     return {
       kind: "text",
       id: toProviderModelId(model.source, model.upstreamId),
-      name: model.displayName,
+      name: displayNameFor(model.source, model.upstreamId),
       contextWindow: maximum,
       inputModalities: [...model.inputModalities],
     };
@@ -122,7 +125,7 @@ function withContextWindow(model: NormalizedOpenCodeModel): ModelInfo {
   return {
     kind: "text",
     id: toProviderModelId(model.source, model.upstreamId),
-    name: model.displayName,
+    name: displayNameFor(model.source, model.upstreamId),
     contextWindow: budget,
     ...(contextWindows === undefined ? {} : { contextWindows }),
     inputModalities: [...model.inputModalities],

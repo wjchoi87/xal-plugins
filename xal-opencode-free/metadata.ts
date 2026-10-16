@@ -35,6 +35,8 @@ export type UpstreamProtocol = TransportKind | "unsupported";
 
 export interface UpstreamModelMetadata {
   deprecated: boolean;
+  /* Official display name, e.g. "GLM-5.3-Flash Free". */
+  name?: string;
   contextWindow?: number;
   protocol?: UpstreamProtocol;
 }
@@ -114,8 +116,10 @@ export function parseModelsDev(input: unknown): UpstreamMetadata {
         asString(override.npm) ?? providerNpm,
         asString(override.api) ?? providerApi,
       );
+      const name = asString(entry.name)?.trim();
       result[source][id] = {
         deprecated: entry.status === "deprecated",
+        ...(name ? { name } : {}),
         ...(context !== undefined && context > 0
           ? { contextWindow: context }
           : {}),

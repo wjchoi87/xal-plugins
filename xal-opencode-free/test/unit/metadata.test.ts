@@ -30,7 +30,19 @@ const MODELS_DEV = {
     models: {
       "big-pickle": { limit: { context: 200_000, output: 32_000 } },
       "glm-5.3-flash-free": { limit: { context: 200_000, output: 32_000 } },
-      "space-bunny-free": { limit: { context: 1_048_576, output: 32_000 } },
+      "space-bunny-free": {
+        name: "Space Bunny Free",
+        limit: { context: 1_048_576, output: 32_000 },
+      },
+      "nemotron-3.5-super-vl-free": {
+        name: "Nemotron 3.5 Super VL Free",
+        limit: { context: 1_048_576, output: 32_000 },
+      },
+      "muse-spark-1.3-contributor-free": {
+        name: "Muse Spark 1.3 Free",
+        limit: { context: 1_048_576, output: 128_000 },
+        provider: { npm: "@ai-sdk/openai" },
+      },
       "deepseek-v4-flash-free": {
         status: "deprecated",
         limit: { context: 200_000, output: 128_000 },
@@ -38,13 +50,6 @@ const MODELS_DEV = {
       "jev-1.13-free": {
         limit: { context: 0, output: 0 },
         provider: { api: "https://opencode.ai/inference/systemone/v1" },
-      },
-      "muse-spark-1.3-contributor-free": {
-        limit: { context: 1_048_576, output: 128_000 },
-        provider: {
-          npm: "@ai-sdk/openai",
-          api: "https://opencode.ai/inference/openai/v1",
-        },
       },
       "minimax-m3-free": {
         limit: { context: 200_000, output: 32_000 },
@@ -83,6 +88,7 @@ describe("parseModelsDev", () => {
     const parsed = parseModelsDev(MODELS_DEV);
     expect(parsed.zen["space-bunny-free"]).toEqual({
       deprecated: false,
+      name: "Space Bunny Free",
       contextWindow: 1_048_576,
       protocol: "chat-completions",
     });
@@ -234,6 +240,8 @@ describe("syncUpstreamMetadata", () => {
         ? ["cat-jam-free", "step-5-preview-free", "glm-5.2"]
         : [
             "space-bunny-free",
+            "nemotron-3.5-super-vl-free",
+            "muse-spark-1.3-contributor-free",
             "deepseek-v4-flash-free",
             "jev-1.13-free",
             "gpt-5",
@@ -243,7 +251,20 @@ describe("syncUpstreamMetadata", () => {
 
     const catalog = await listModels("profile", true);
     const ids = catalog.models.map((model) => model.id);
-    expect(ids).toEqual(["zen/space-bunny-free", "go/cat-jam-free"]);
+    expect(ids).toEqual([
+      "zen/muse-spark-1.3-contributor-free",
+      "zen/nemotron-3.5-super-vl-free",
+      "zen/space-bunny-free",
+      "go/cat-jam-free",
+    ]);
+    // official names (minus "Free"); curated overrides still win; humanized
+    // IDs keep their dots when models.dev has no name
+    expect(catalog.models.map((model) => model.name)).toEqual([
+      "Muse Spark 1.3 Contributor (Zen Free)",
+      "Nemotron 3.5 Super VL (Zen Free)",
+      "Space Bunny (Zen Free)",
+      "Cat Jam (Go Free)",
+    ]);
     const bunny = catalog.models.find((m) => m.id === "zen/space-bunny-free");
     // 1M from models.dev (no bundled entry) -> 256K budget + ladder up to 1M
     expect(bunny?.contextWindow).toBe(256_000);
