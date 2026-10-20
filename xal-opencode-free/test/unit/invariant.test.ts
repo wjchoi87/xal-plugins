@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { evaluateFree } from "../../free-evaluator";
 import {
-  parseGoModels,
+  parseProviderModelId,
   parseZenModels,
   toProviderModelId,
 } from "../../model-sources";
 
-/* Snapshot of the live OpenCode catalogs at the time of implementation.
+/* Snapshot of the live OpenCode Zen catalog at the time of implementation.
  * Used only to drive regression invariants; assertions never hardcode a
  * specific model ID so the plugin tolerates catalog changes. */
 const ZEN_IDS = [
@@ -35,17 +35,6 @@ const ZEN_IDS = [
   "exo-free",
 ];
 
-const GO_IDS = [
-  "glm-5.2",
-  "deepseek-v4-pro",
-  "qwen3.7-max",
-  "grok-4.6",
-  "minimax-m3",
-  "haihai-free",
-  "ox-alpha-free",
-  "step-5-preview-free",
-];
-
 function catalog(ids: string[]): unknown {
   return { object: "list", data: ids.map((id) => ({ id, object: "model" })) };
 }
@@ -53,34 +42,12 @@ function catalog(ids: string[]): unknown {
 describe("core invariant: exposed === free", () => {
   test("every model that would be exposed evaluates to 'free'", () => {
     const zen = parseZenModels(catalog(ZEN_IDS));
-    const go = parseGoModels(catalog(GO_IDS));
-    const all = [...zen, ...go];
-    const exposed = all.filter(
+    const exposed = zen.filter(
       (model) => evaluateFree(model).status === "free",
     );
     for (const model of exposed) {
       expect(evaluateFree(model).status).toBe("free");
     }
-  });
-
-  test("no Go subscription model is ever exposed", () => {
-    const go = parseGoModels(catalog(GO_IDS));
-    for (const model of go) {
-      const evalResult = evaluateFree(model);
-      if (evalResult.status !== "free") {
-        expect([
-          "go-subscription-model",
-          "manual-paid-override",
-          "manual-exclude-override",
-        ]).toContain(evalResult.reason);
-      }
-    }
-    const exposedGo = go.filter(
-      (model) => evaluateFree(model).status === "free",
-    );
-    expect(exposedGo.every((model) => model.upstreamId.includes("free"))).toBe(
-      true,
-    );
   });
 
   test("only the known-free Zen families surface", () => {
@@ -99,32 +66,37 @@ describe("core invariant: exposed === free", () => {
 
   test("retired and non-chat free models are never exposed", () => {
     const zen = parseZenModels(catalog(ZEN_IDS));
-    const go = parseGoModels(catalog(GO_IDS));
-    const exposed = [...zen, ...go]
+    const exposed = zen
       .filter((model) => evaluateFree(model).status === "free")
-      .map((model) => toProviderModelId(model.source, model.upstreamId));
+      .map((model) => toProviderModelId("zen", model.upstreamId));
     for (const id of [
       "zen/deepseek-v4-flash-free",
       "zen/mimo-v2.5-free",
       "zen/muse-spark-1.2-contributor-free",
       "zen/exo-free",
       "zen/jev-1.13-free",
-      "go/step-5-preview-free",
     ]) {
       expect(exposed).not.toContain(id);
     }
     expect(exposed).toContain("zen/mimo-v2.6-flash-free");
   });
 
-  test("dedupe + source prefix keeps zen and go same-name distinct", () => {
+  test("paid zen models are never exposed", () => {
     const zen = parseZenModels(catalog(["glm-5.2"]));
-    const go = parseGoModels(catalog(["glm-5.2"]));
-    const ids = new Set(
-      [...zen, ...go]
-        .filter((model) => evaluateFree(model).status === "free")
-        .map((model) => toProviderModelId(model.source, model.upstreamId)),
-    );
-    // glm-5.2 is paid on both, so nothing is exposed here.
-    expect(ids.size).toBe(0);
+    const ids = zen
+      .filter((model) => evaluateFree(model).status === "free")
+      .map((model) => toProviderModelId("zen", model.upstreamId));
+    // glm-5.2 is paid, so nothing is exposed here.
+    expect(ids.length).toBe(0);
+  });
+});
+
+describe("Go plan models are out of scope", () => {
+  test("go-prefixed ids are rejected by the router", () => {
+    // Go models (even -free ones) are served only with a Go plan
+    // subscription, so this plugin no longer routes them at all.
+    expect(parseProviderModelId("go/ox-alpha-free")).toBeUndefined();
+    expect(parseProviderModelId("go/haihai-free")).toBeUndefined();
+    expect(parseProviderModelId("go/glm-5.2")).toBeUndefined();
   });
 });

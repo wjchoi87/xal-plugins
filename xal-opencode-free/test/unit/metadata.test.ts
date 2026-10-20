@@ -28,19 +28,47 @@ const MODELS_DEV = {
     npm: "@ai-sdk/openai-compatible",
     api: "https://opencode.ai/inference/openai/v1",
     models: {
-      "big-pickle": { limit: { context: 200_000, output: 32_000 } },
-      "glm-5.3-flash-free": { limit: { context: 200_000, output: 32_000 } },
+      "big-pickle": {
+        limit: { context: 200_000, output: 32_000 },
+        reasoning: true,
+        reasoning_options: [],
+      },
+      "glm-5.3-flash-free": {
+        limit: { context: 200_000, output: 32_000 },
+        reasoning: true,
+        reasoning_options: [{ type: "effort", values: ["low", "high", "max"] }],
+      },
       "space-bunny-free": {
         name: "Space Bunny Free",
         limit: { context: 1_048_576, output: 32_000 },
+        reasoning: true,
+        reasoning_options: [
+          { type: "effort", values: ["low", "medium", "high", "xhigh", "max"] },
+        ],
+      },
+      "longcat-2.5-preview-free": {
+        limit: { context: 256_000, output: 32_000 },
+        reasoning: true,
+        reasoning_options: [{ type: "toggle" }],
       },
       "nemotron-3.5-super-vl-free": {
         name: "Nemotron 3.5 Super VL Free",
         limit: { context: 1_048_576, output: 32_000 },
+        reasoning: true,
+        reasoning_options: [
+          {
+            type: "effort",
+            values: ["none", "minimal", "low", "medium", "high", "xhigh"],
+          },
+        ],
       },
       "muse-spark-1.3-contributor-free": {
         name: "Muse Spark 1.3 Free",
         limit: { context: 1_048_576, output: 128_000 },
+        reasoning: true,
+        reasoning_options: [
+          { type: "effort", values: ["minimal", "low", "medium", "high"] },
+        ],
         provider: { npm: "@ai-sdk/openai" },
       },
       "deepseek-v4-flash-free": {
@@ -60,27 +88,12 @@ const MODELS_DEV = {
       },
     },
   },
-  "opencode-go": {
-    npm: "@ai-sdk/openai-compatible",
-    api: "https://opencode.ai/inference/go/openai/v1",
-    models: {
-      "cat-jam-free": { limit: { context: 1_048_576, output: 32_000 } },
-      "step-5-preview-free": {
-        status: "deprecated",
-        limit: { context: 256_000, output: 32_000 },
-      },
-    },
-  },
 };
 
 describe("parseModelsDev", () => {
-  test("keeps only the OpenCode providers, keyed by source", () => {
+  test("keeps only the OpenCode Zen provider, keyed by source", () => {
     const parsed = parseModelsDev(MODELS_DEV);
     expect(Object.keys(parsed.zen)).toContain("big-pickle");
-    expect(Object.keys(parsed.go)).toEqual([
-      "cat-jam-free",
-      "step-5-preview-free",
-    ]);
     expect(parsed.zen["gpt-5"]).toBeUndefined();
   });
 
@@ -91,11 +104,26 @@ describe("parseModelsDev", () => {
       name: "Space Bunny Free",
       contextWindow: 1_048_576,
       protocol: "chat-completions",
+      reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
     });
     expect(parsed.zen["deepseek-v4-flash-free"]?.deprecated).toBe(true);
-    expect(parsed.go["step-5-preview-free"]?.deprecated).toBe(true);
     // a zero context is treated as unknown, not as a 0-token window
     expect(parsed.zen["jev-1.13-free"]?.contextWindow).toBeUndefined();
+  });
+
+  test("reads selectable reasoning efforts; toggle-only and empty stay unset", () => {
+    const parsed = parseModelsDev(MODELS_DEV);
+    expect(parsed.zen["glm-5.3-flash-free"]?.reasoningEfforts).toEqual([
+      "low",
+      "high",
+      "max",
+    ]);
+    // always-thinking model: no selectable levels
+    expect(parsed.zen["big-pickle"]?.reasoningEfforts).toBeUndefined();
+    // toggle (thinking on/off) is not an effort picker
+    expect(
+      parsed.zen["longcat-2.5-preview-free"]?.reasoningEfforts,
+    ).toBeUndefined();
   });
 
   test("maps each model to the protocol it is served on", () => {
@@ -192,9 +220,7 @@ describe("syncUpstreamMetadata", () => {
     );
     setUpstreamMetadata(undefined);
     expect(await syncUpstreamMetadata(false)).toEqual({ origin: "cache" });
-    expect(upstreamMetadataFor("go", "cat-jam-free")?.contextWindow).toBe(
-      1_048_576,
-    );
+    expect(upstreamMetadataFor("zen", "glm-5.3-flash-free")).toBeDefined();
     expect(calls).toEqual(["https://models.dev/api.json"]);
   });
 
@@ -236,35 +262,64 @@ describe("syncUpstreamMetadata", () => {
       calls.push(url);
       if (url === "https://models.dev/api.json")
         return Response.json(MODELS_DEV);
-      const ids = url.includes("/zen/go/")
-        ? ["cat-jam-free", "step-5-preview-free", "glm-5.2"]
-        : [
-            "space-bunny-free",
-            "nemotron-3.5-super-vl-free",
-            "muse-spark-1.3-contributor-free",
-            "deepseek-v4-flash-free",
-            "jev-1.13-free",
-            "gpt-5",
-          ];
+      const ids = [
+        "space-bunny-free",
+        "nemotron-3.5-super-vl-free",
+        "muse-spark-1.3-contributor-free",
+        "glm-5.3-flash-free",
+        "longcat-2.5-preview-free",
+        "big-pickle",
+        "deepseek-v4-flash-free",
+        "jev-1.13-free",
+        "gpt-5",
+      ];
       return Response.json({ object: "list", data: ids.map((id) => ({ id })) });
     }) as typeof fetch;
 
     const catalog = await listModels("profile", true);
     const ids = catalog.models.map((model) => model.id);
     expect(ids).toEqual([
+      "zen/big-pickle",
+      "zen/glm-5.3-flash-free",
+      "zen/longcat-2.5-preview-free",
       "zen/muse-spark-1.3-contributor-free",
       "zen/nemotron-3.5-super-vl-free",
       "zen/space-bunny-free",
-      "go/cat-jam-free",
     ]);
     // official names (minus "Free"); curated overrides still win; humanized
     // IDs keep their dots when models.dev has no name
     expect(catalog.models.map((model) => model.name)).toEqual([
+      "Big Pickle (Zen Free)",
+      "GLM 5.3 Flash (Zen Free)",
+      "Longcat 2.5 Preview (Zen Free)",
       "Muse Spark 1.3 Contributor (Zen Free)",
       "Nemotron 3.5 Super VL (Zen Free)",
       "Space Bunny (Zen Free)",
-      "Cat Jam (Go Free)",
     ]);
+    const byId = new Map(catalog.models.map((model) => [model.id, model]));
+    // /thinking appears only where the upstream accepts effort levels;
+    // default follows the upstream's own (max when offered)
+    expect(byId.get("zen/glm-5.3-flash-free")?.thinking).toEqual({
+      options: ["low", "high", "max"],
+      default: "max",
+    });
+    expect(byId.get("zen/space-bunny-free")?.thinking).toEqual({
+      options: ["low", "medium", "high", "xhigh", "max"],
+      default: "max",
+    });
+    // "minimal" is not expressible in Xal and is dropped; no "max" offered,
+    // so the default falls back to "high"
+    expect(byId.get("zen/nemotron-3.5-super-vl-free")?.thinking).toEqual({
+      options: ["none", "low", "medium", "high", "xhigh"],
+      default: "high",
+    });
+    // responses-transport model: effort is not forwarded there
+    expect(
+      byId.get("zen/muse-spark-1.3-contributor-free")?.thinking,
+    ).toBeUndefined();
+    // always-thinking and toggle-only models have no picker
+    expect(byId.get("zen/big-pickle")?.thinking).toBeUndefined();
+    expect(byId.get("zen/longcat-2.5-preview-free")?.thinking).toBeUndefined();
     const bunny = catalog.models.find((m) => m.id === "zen/space-bunny-free");
     // 1M from models.dev (no bundled entry) -> 256K budget + ladder up to 1M
     expect(bunny?.contextWindow).toBe(256_000);
@@ -282,7 +337,6 @@ describe("syncUpstreamMetadata", () => {
         },
         "space-bunny-free": { deprecated: false, protocol: "responses" },
       },
-      go: {},
     });
     const seen: Array<{ url: string; apiKey: string | null }> = [];
     globalThis.fetch = (async (

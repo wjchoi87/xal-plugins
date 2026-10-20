@@ -10,9 +10,9 @@ import {
 import {
   displayNameFor,
   modelsEndpoint,
-  parseGoModels,
   parseProviderModelId,
   parseZenModels,
+  resolveTransport,
   toProviderModelId,
   type NormalizedOpenCodeModel,
   type OpenCodeSource,
@@ -38,14 +38,18 @@ import {
   isFixedContextOnly,
 } from "./context";
 import { PROVIDER_NAME } from "./provider";
-import type { ModelCatalog, ModelInfo } from "./types";
+import type {
+  ModelCatalog,
+  ModelInfo,
+  ThinkingEffort,
+  ThinkingOptions,
+} from "./types";
 
 const CATALOG_TIMEOUT_MS = 10_000;
 const USER_AGENT = "xal-opencode-free/0.1.0";
 
 const SOURCE_NAMES: Record<OpenCodeSource, string> = {
   zen: "OpenCode Zen",
-  go: "OpenCode Go",
 };
 
 /* Policy change:
@@ -93,6 +97,65 @@ function evaluateModels(
   return models.map((model) => ({ model, evaluation: evaluateFree(model) }));
 }
 
+/* Effort levels Xal can express (its `/thinking` picker). Values outside
+ * this set (e.g. GLM's "minimal") cannot be offered and are dropped. */
+const XAL_THINKING_EFFORTS: ReadonlySet<string> = new Set([
+  "none",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
+
+/* Offline fallback mirroring models.dev `reasoning_options` for the default
+ * free models; the synced metadata (metadata.ts) wins when available. */
+const BUNDLED_REASONING_EFFORTS: Record<string, readonly string[]> = {
+  "deepseek-v4.1-flash-free": ["low", "high", "max"],
+  "glm-5.3-flash-free": ["low", "high", "max"],
+};
+
+/* Policy change:
+ * - before: ModelInfo never advertised `thinking`, so Xal answered "/thinking"
+ *   with "does not support configurable thinking" even for models whose
+ *   upstream accepts a reasoning effort
+ * - after: models with selectable effort levels (models.dev
+ *   `reasoning_options` of type "effort", or the bundled fallback) expose a
+ *   `thinking` picker limited to the levels the upstream actually accepts;
+ *   the chosen level is sent as `reasoning_effort`
+ * - reason: the effort list is per-model (e.g. GLM-5.3/DeepSeek accept only
+ *   low/high/max; offering Xal's full set would 400 on the others), and
+ *   models.dev publishes it per model
+ * - default: the upstream's own default when offered — "max" first (GLM's
+ *   documented default), then "high", then the middle level
+ * - scope: models served on the chat-completions transport (the only
+ *   transport that forwards `reasoning_effort`); always-thinking models
+ *   (empty options, e.g. big-pickle/mimo) and toggle-only models stay
+ *   without a picker */
+function thinkingOptionsFor(
+  source: OpenCodeSource,
+  upstreamId: string,
+): ThinkingOptions | undefined {
+  if (resolveTransport(source, upstreamId) !== "chat-completions")
+    return undefined;
+  const efforts =
+    upstreamMetadataFor(source, upstreamId)?.reasoningEfforts ??
+    BUNDLED_REASONING_EFFORTS[upstreamId] ??
+    [];
+  const options = [
+    ...new Set(efforts.filter((effort) => XAL_THINKING_EFFORTS.has(effort))),
+  ];
+  if (options.length === 0) return undefined;
+  const def = (
+    options.includes("max")
+      ? "max"
+      : options.includes("high")
+        ? "high"
+        : (options[Math.floor(options.length / 2)] as ThinkingEffort)
+  ) as ThinkingEffort;
+  return { options: options as ThinkingEffort[], default: def };
+}
+
 /* Fill in the context window the catalog may never report. Source precedence
  * (see context.ts): config override, then a catalog-provided value, then the
  * synced models.dev limit (metadata.ts), then the bundled family table, then
@@ -111,6 +174,7 @@ function withContextWindow(model: NormalizedOpenCodeModel): ModelInfo {
     bundledContextWindowFor(model.upstreamId) ??
     fallbackContextWindow() ??
     catchAllContextWindow();
+  const thinking = thinkingOptionsFor(model.source, model.upstreamId);
   if (isFixedContextOnly(model.upstreamId)) {
     return {
       kind: "text",
@@ -118,6 +182,7 @@ function withContextWindow(model: NormalizedOpenCodeModel): ModelInfo {
       name: displayNameFor(model.source, model.upstreamId),
       contextWindow: maximum,
       inputModalities: [...model.inputModalities],
+      ...(thinking === undefined ? {} : { thinking }),
     };
   }
   const contextWindows = contextWindowsFor(maximum);
@@ -129,6 +194,7 @@ function withContextWindow(model: NormalizedOpenCodeModel): ModelInfo {
     contextWindow: budget,
     ...(contextWindows === undefined ? {} : { contextWindows }),
     inputModalities: [...model.inputModalities],
+    ...(thinking === undefined ? {} : { thinking }),
   };
 }
 
@@ -169,7 +235,7 @@ async function fetchSource(
     );
     if (!response.ok) await raiseForStatus(sourceName(source), response);
     const raw: unknown = await response.json();
-    const parsed = source === "zen" ? parseZenModels(raw) : parseGoModels(raw);
+    const parsed = parseZenModels(raw);
     await writeSourceCache(source, parsed);
     await metadataReady;
     return { source, origin: "runtime", evaluations: evaluateModels(parsed) };
@@ -199,23 +265,7 @@ function freeModels(report: SourceReport): ModelInfo[] {
 }
 
 function sortModels(models: ModelInfo[]): ModelInfo[] {
-  const order: Record<OpenCodeSource, number> = { zen: 0, go: 1 };
-  return [...models].sort((left, right) => {
-    const leftKey = left.id;
-    const rightKey = right.id;
-    const leftSource = leftKey.slice(0, leftKey.indexOf("/"));
-    const rightSource = rightKey.slice(0, rightKey.indexOf("/"));
-    const ls =
-      leftSource === "zen" || leftSource === "go"
-        ? (order[leftSource] ?? 2)
-        : 2;
-    const rs =
-      rightSource === "zen" || rightSource === "go"
-        ? (order[rightSource] ?? 2)
-        : 2;
-    if (ls !== rs) return ls - rs;
-    return left.id.localeCompare(right.id);
-  });
+  return [...models].sort((left, right) => left.id.localeCompare(right.id));
 }
 
 function dedupe(models: ModelInfo[]): ModelInfo[] {
@@ -254,6 +304,15 @@ function buildWarnings(
   return warnings;
 }
 
+/* Policy change:
+ * - before: both the Zen and the Go catalogs were fetched and their free
+ *   models merged into one list
+ * - after: only the Zen catalog is fetched; the Go source is not queried
+ * - reason: every Go model — including the `*-free` ones — is served only
+ *   while a Go plan subscription is active, so none of them belong in a
+ *   free-models provider
+ * - scope: catalog resolution; the merged-cache fallback additionally drops
+ *   stale `go/<id>` entries written by older plugin versions */
 async function resolveCatalog(
   profileId: string,
   refresh: boolean,
@@ -266,7 +325,6 @@ async function resolveCatalog(
   const metadataReady = syncUpstreamMetadata(refresh);
   const reports: SourceReport[] = [
     await fetchSource("zen", profileId, refresh, metadataReady),
-    await fetchSource("go", profileId, refresh, metadataReady),
   ];
   const metadata = await metadataReady;
   let models = sortModels(dedupe(reports.flatMap(freeModels)));
@@ -286,7 +344,7 @@ async function resolveCatalog(
     const merged = await readMergedCache();
     if (merged && merged.models.length > 0) {
       models = merged.models
-        .filter((model) => !isRetiredUpstream(model.id))
+        .filter((model) => isFallbackEligible(model.id))
         .map((model) => ({ ...model, kind: "text" }));
       fallback = models.length > 0;
     }
@@ -296,12 +354,16 @@ async function resolveCatalog(
 }
 
 /* The merged fallback list was written before the latest metadata sync; drop
- * anything that has since been retired or found unservable. */
-function isRetiredUpstream(providerModelId: string): boolean {
+ * anything that has since been retired or found unservable. Ids this plugin
+ * can no longer route (stale `go/<id>` entries from older versions) are
+ * dropped too. */
+function isFallbackEligible(providerModelId: string): boolean {
   const parsed = parseProviderModelId(providerModelId);
   if (!parsed) return false;
   const upstream = upstreamMetadataFor(parsed.source, parsed.upstreamId);
-  return upstream?.deprecated === true || upstream?.protocol === "unsupported";
+  return !(
+    upstream?.deprecated === true || upstream?.protocol === "unsupported"
+  );
 }
 
 export async function listModels(

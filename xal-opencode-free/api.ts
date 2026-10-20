@@ -1,4 +1,4 @@
-import { goBaseUrl, zenBaseUrl } from "./config";
+import { zenBaseUrl } from "./config";
 import { clientUserAgent, toOpenCodeSessionId } from "./fingerprint";
 import { currentOpenCodeSessionId } from "./session-context";
 import { asString, isRecord, ProviderError } from "./types";
@@ -36,7 +36,7 @@ export function retryAfterMs(value: string | null): number | undefined {
  *   user-agent) and carried the raw Xal session id in x-opencode-session;
  *   free-tier inference was rejected with 403 FreeTierError "OpenCode's free
  *   tier can only be used from within OpenCode"
- * - after: every request to the zen/go base URLs presents the official
+ * - after: every request to the zen base URL presents the official
  *   client's fingerprint — the `opencode/<channel>/<version>/<artifact>`
  *   user-agent (configurable via `clientUserAgent`) and a canonical
  *   `ses_…` session id translated from the Xal session id (see fingerprint.ts
@@ -46,16 +46,12 @@ export function retryAfterMs(value: string | null): number | undefined {
  *   descending-timestamp `ses_` id; the stable translation keeps one Xal
  *   session mapped to one upstream session so upstream prompt caching
  *   survives across turns
- * - scope: requests to the configured zen/go base URLs (catalog, key
+ * - scope: requests to the configured zen base URL (catalog, key
  *   validation, inference) while a stream session is active; other hosts are
  *   untouched and catalog /models fetches remain session-less by design */
 function withGatewayFingerprint(url: string, init: RequestInit): RequestInit {
-  const bases = [goBaseUrl(), zenBaseUrl()].map((base) =>
-    base.replace(/\/+$/, ""),
-  );
-  const isGateway = bases.some(
-    (base) => url === base || url.startsWith(`${base}/`),
-  );
+  const base = zenBaseUrl().replace(/\/+$/, "");
+  const isGateway = url === base || url.startsWith(`${base}/`);
   if (!isGateway) return init;
 
   const headers = new Headers(init.headers);
@@ -128,8 +124,8 @@ export async function raiseForStatus(
    * - after: only 401 blames the credential; 403 is reported as an access
    *   decision with the upstream reason, and 426 as a client-version problem
    * - reason: the gateway answers 403 with a valid key whenever the account may
-   *   not use the model (FreeTierError, missing Go subscription, region gate),
-   *   so the old wording sent users to reissue keys that were never the issue
+   *   not use the model (FreeTierError, region gate), so the old wording sent
+   *   users to reissue keys that were never the issue
    * - scope: every non-2xx inference and catalog response */
   if (status === 401) {
     throw new ProviderError(

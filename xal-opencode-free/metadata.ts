@@ -11,9 +11,9 @@ import { asNumber, asString, isRecord } from "./types";
 /* Runtime sync with OpenCode's own model metadata.
  *
  * OpenCode publishes per-model serving limits, retirement status, and protocol
- * for its gateway in models.dev (`opencode` = Zen, `opencode-go` = Go) — the
- * same catalog OpenCode's own client loads at runtime. The `/zen/v1/models`
- * catalog only lists IDs, so this module fills in what it lacks.
+ * for its gateway in models.dev (`opencode` = Zen) — the same catalog
+ * OpenCode's own client loads at runtime. The `/zen/v1/models` catalog only
+ * lists IDs, so this module fills in what it lacks.
  *
  * Policy change:
  * - before: context windows, retired models, and non-chat protocols came only
@@ -26,8 +26,8 @@ import { asNumber, asString, isRecord } from "./types";
  *   protocols this plugin cannot stream
  * - reason: keep the free list, compaction budgets, and request routing in
  *   step with OpenCode automatically
- * - scope: every Zen/Go model the catalog lists. When models.dev is
- *   unreachable the last cached snapshot is used, then the bundled tables;
+ * - scope: every Zen model the catalog lists. When models.dev is unreachable
+ *   the last cached snapshot is used, then the bundled tables;
  *   `syncModelMetadata: false` turns the sync off entirely. The OpenCode API
  *   key is never sent to models.dev. */
 
@@ -39,6 +39,11 @@ export interface UpstreamModelMetadata {
   name?: string;
   contextWindow?: number;
   protocol?: UpstreamProtocol;
+  /* Reasoning effort levels the model accepts (models.dev
+   * `reasoning_options[].type === "effort"`), e.g. ["low","high","max"].
+   * Absent when the model's thinking is not configurable (always-on
+   * `reasoning: true` with no options, or a mere on/off toggle). */
+  reasoningEfforts?: string[];
 }
 
 export type UpstreamMetadata = Record<
@@ -55,7 +60,6 @@ export interface MetadataReport {
 
 const PROVIDER_IDS: Record<OpenCodeSource, string> = {
   zen: "opencode",
-  go: "opencode-go",
 };
 
 const METADATA_TIMEOUT_MS = 15_000;
@@ -94,14 +98,34 @@ function protocolFor(
   }
 }
 
-/* Reduce the models.dev `api.json` (all providers, several MB) to the two
- * OpenCode providers. A provider block that is missing or malformed yields an
- * empty map for that source; a response without any OpenCode model fails. */
+/* Flatten the models.dev `reasoning_options` list into the plain effort
+ * levels the model accepts. Only `type: "effort"` entries carry selectable
+ * levels; `toggle` (thinking on/off) and empty lists mean thinking is not
+ * effort-configurable and yield undefined. */
+function reasoningEffortsFor(
+  entry: Record<string, unknown>,
+): string[] | undefined {
+  if (!Array.isArray(entry.reasoning_options)) return undefined;
+  const efforts = entry.reasoning_options.flatMap((option): string[] => {
+    if (!isRecord(option) || option.type !== "effort") return [];
+    return Array.isArray(option.values)
+      ? option.values.flatMap((value) => {
+          const effort = asString(value);
+          return effort ? [effort] : [];
+        })
+      : [];
+  });
+  return efforts.length > 0 ? [...new Set(efforts)] : undefined;
+}
+
+/* Reduce the models.dev `api.json` (all providers, several MB) to the
+ * OpenCode Zen provider. A missing or malformed provider block yields an
+ * empty map; a response without any OpenCode model fails. */
 export function parseModelsDev(input: unknown): UpstreamMetadata {
   if (!isRecord(input))
     throw new Error("models.dev response was not an object");
-  const result: UpstreamMetadata = { zen: {}, go: {} };
-  for (const source of ["zen", "go"] as const) {
+  const result: UpstreamMetadata = { zen: {} };
+  for (const source of ["zen"] as const) {
     const provider = input[PROVIDER_IDS[source]];
     if (!isRecord(provider) || !isRecord(provider.models)) continue;
     const providerNpm = asString(provider.npm);
@@ -117,6 +141,7 @@ export function parseModelsDev(input: unknown): UpstreamMetadata {
         asString(override.api) ?? providerApi,
       );
       const name = asString(entry.name)?.trim();
+      const reasoningEfforts = reasoningEffortsFor(entry);
       result[source][id] = {
         deprecated: entry.status === "deprecated",
         ...(name ? { name } : {}),
@@ -124,13 +149,11 @@ export function parseModelsDev(input: unknown): UpstreamMetadata {
           ? { contextWindow: context }
           : {}),
         ...(protocol === undefined ? {} : { protocol }),
+        ...(reasoningEfforts === undefined ? {} : { reasoningEfforts }),
       };
     }
   }
-  if (
-    Object.keys(result.zen).length === 0 &&
-    Object.keys(result.go).length === 0
-  )
+  if (Object.keys(result.zen).length === 0)
     throw new Error("models.dev response contained no OpenCode models");
   return result;
 }

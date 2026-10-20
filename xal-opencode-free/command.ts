@@ -12,10 +12,9 @@ function printReport(
   print: (line: string) => void,
   report: SourceReport,
 ): void {
-  const header = report.source === "zen" ? "ZEN FREE" : "GO FREE";
   print("");
   print(
-    `${header} (${report.origin}${report.error ? ` — ${report.error}` : ""})`,
+    `ZEN FREE (${report.origin}${report.error ? ` — ${report.error}` : ""})`,
   );
   const free = report.evaluations.filter(
     (record) => record.evaluation.status === "free",
@@ -45,7 +44,7 @@ function printReport(
   }
   const counts = modelCountByStatus(report);
   print(
-    `  ${report.source === "zen" ? "Zen" : "Go"} Free: ${counts.free}, Dropped: ${counts.paid + counts.unknown + counts.excluded}, Unknown: ${counts.unknown}`,
+    `  Zen Free: ${counts.free}, Dropped: ${counts.paid + counts.unknown + counts.excluded}, Unknown: ${counts.unknown}`,
   );
 }
 

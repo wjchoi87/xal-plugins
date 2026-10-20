@@ -1,7 +1,6 @@
 import { openCodeClientVersion } from "./client-version";
 
 export const DEFAULT_ZEN_BASE_URL = "https://opencode.ai/zen/v1";
-export const DEFAULT_GO_BASE_URL = "https://opencode.ai/zen/go/v1";
 
 /* Free-tier requests must present the official client's user-agent. The
  * gateway expects the client's `opencode/<channel>/<version>/<artifact>`
@@ -31,9 +30,8 @@ export interface OpenCodeFreeConfig {
   cacheTtlMs: number;
   /* Dump evaluated model diagnostics to warnings instead of hiding them. */
   debugModels: boolean;
-  /* Override the upstream catalog base URLs (normally left default). */
+  /* Override the upstream catalog base URL (normally left default). */
   zenBaseUrl: string;
-  goBaseUrl: string;
   /* Sync context limits, retirements, and protocols from models.dev. */
   syncModelMetadata: boolean;
   modelMetadataUrl: string;
@@ -46,7 +44,6 @@ let config: OpenCodeFreeConfig = {
   cacheTtlMs: DEFAULT_CACHE_TTL_MS,
   debugModels: false,
   zenBaseUrl: DEFAULT_ZEN_BASE_URL,
-  goBaseUrl: DEFAULT_GO_BASE_URL,
   syncModelMetadata: true,
   modelMetadataUrl: DEFAULT_MODEL_METADATA_URL,
   modelMetadataTtlMs: DEFAULT_MODEL_METADATA_TTL_MS,
@@ -87,7 +84,6 @@ export function resolveConfig(raw: Record<string, unknown>): void {
   }
   for (const [key, factory] of [
     ["zenBaseUrl", () => DEFAULT_ZEN_BASE_URL],
-    ["goBaseUrl", () => DEFAULT_GO_BASE_URL],
     ["modelMetadataUrl", () => DEFAULT_MODEL_METADATA_URL],
     ["clientUserAgent", () => defaultClientUserAgent()],
   ] as const) {
@@ -117,10 +113,6 @@ export function debugModels(): boolean {
 
 export function zenBaseUrl(): string {
   return config.zenBaseUrl;
-}
-
-export function goBaseUrl(): string {
-  return config.goBaseUrl;
 }
 
 export function syncModelMetadata(): boolean {

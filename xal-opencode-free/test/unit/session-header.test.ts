@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { providerFetch } from "../../api";
-import {
-  DEFAULT_CLIENT_USER_AGENT,
-  DEFAULT_GO_BASE_URL,
-  DEFAULT_ZEN_BASE_URL,
-} from "../../config";
+import { DEFAULT_CLIENT_USER_AGENT, DEFAULT_ZEN_BASE_URL } from "../../config";
 import { CANONICAL_SESSION_ID, toOpenCodeSessionId } from "../../fingerprint";
 import { runWithOpenCodeSession } from "../../session-context";
 
@@ -26,24 +22,11 @@ function captureHeaders(): { headers: () => Headers | undefined } {
   return { headers: () => seen };
 }
 
+function modelsUrl(): string {
+  return `${DEFAULT_ZEN_BASE_URL}/models`;
+}
+
 describe("OpenCode session header", () => {
-  test("translates the Xal session id to a canonical id on Go inference requests", async () => {
-    const captured = captureHeaders();
-
-    await runWithOpenCodeSession("session-123", () =>
-      providerFetch(
-        "OpenCode Go",
-        undefined,
-        `${DEFAULT_GO_BASE_URL}/chat/completions`,
-        { method: "POST" },
-      ),
-    );
-
-    const sessionId = captured.headers()?.get("x-opencode-session");
-    expect(sessionId).toBe(toOpenCodeSessionId("session-123"));
-    expect(sessionId).toMatch(CANONICAL_SESSION_ID);
-  });
-
   test("translates the Xal session id to a canonical id on Zen inference requests", async () => {
     const captured = captureHeaders();
 
@@ -67,9 +50,9 @@ describe("OpenCode session header", () => {
 
     await runWithOpenCodeSession(canonical, () =>
       providerFetch(
-        "OpenCode Go",
+        "OpenCode Zen",
         undefined,
-        `${DEFAULT_GO_BASE_URL}/chat/completions`,
+        `${DEFAULT_ZEN_BASE_URL}/chat/completions`,
         { method: "POST" },
       ),
     );
@@ -80,12 +63,9 @@ describe("OpenCode session header", () => {
   test("does not invent a session id outside a streaming request", async () => {
     const captured = captureHeaders();
 
-    await providerFetch(
-      "OpenCode Go",
-      undefined,
-      `${DEFAULT_GO_BASE_URL}/models`,
-      { method: "GET" },
-    );
+    await providerFetch("OpenCode Zen", undefined, modelsUrl(), {
+      method: "GET",
+    });
 
     expect(captured.headers()?.get("x-opencode-session")).toBeNull();
   });
@@ -113,14 +93,9 @@ describe("OpenCode gateway user-agent", () => {
   test("applies the gateway user-agent even when the caller sends none", async () => {
     const captured = captureHeaders();
 
-    await providerFetch(
-      "OpenCode Go",
-      undefined,
-      `${DEFAULT_GO_BASE_URL}/models`,
-      {
-        method: "GET",
-      },
-    );
+    await providerFetch("OpenCode Zen", undefined, modelsUrl(), {
+      method: "GET",
+    });
 
     expect(captured.headers()?.get("user-agent")).toBe(
       DEFAULT_CLIENT_USER_AGENT,

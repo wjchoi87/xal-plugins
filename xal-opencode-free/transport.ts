@@ -1,12 +1,11 @@
 import { providerFetch, raiseForStatus } from "./api";
 import { apiKey } from "./auth";
 import { mergedTools } from "./fingerprint";
-import { ensureUpstreamMetadata, upstreamMetadataFor } from "./metadata";
+import { ensureUpstreamMetadata } from "./metadata";
 import {
   parseProviderModelId,
   resolveEndpoint,
-  type OpenCodeSource,
-  type TransportKind,
+  resolveTransport,
 } from "./model-sources";
 import { PROVIDER_ID, PROVIDER_NAME } from "./provider";
 import {
@@ -28,31 +27,6 @@ import {
 } from "./types";
 
 const DEFAULT_MAX_TOKENS = 32_000;
-
-/* Without wall-clock model metadata the catalog doesn't advertise a protocol,
- * so models default to the OpenAI-compatible chat-completions endpoint.
- * Per-model overrides (keyed `source/upstreamId`) opt individual free models
- * onto `/responses` or `/messages` when the upstream only serves that protocol.
- *
- * Policy change:
- * - before: every model used chat-completions, so the Muse Spark contributor
- *   models (which only serve the OpenAI `/responses` protocol) returned 500
- *   "Internal server error" from `/chat/completions`
- * - after: Muse Spark contributor models are routed to `/responses`
- * - reason: `muse-spark-*-contributor-free` accept `/zen/v1/responses` (200)
- *   but reject `chat/completions` and `/messages` (500) — verified against the
- *   live Zen catalog
- * - scope: requests for those exact upstream model IDs */
-const MODEL_TRANSPORT: Record<string, TransportKind> = {
-  "zen/muse-spark-1.3-contributor-free": "responses",
-};
-/* Policy change:
- * - before: routing came only from MODEL_TRANSPORT, so a new free model served
- *   on `/responses` or `/messages` was sent to `/chat/completions` and failed
- * - after: the protocol synced from models.dev (metadata.ts) wins; the table
- *   above is the fallback when no synced metadata is available
- * - reason: OpenCode assigns each model one protocol and publishes it there
- * - scope: request routing for every model with synced metadata */
 
 export type SseEvent = { done: true } | { done: false; data: unknown };
 
@@ -192,16 +166,6 @@ function toolCallItem(
   };
 }
 
-function resolveTransport(
-  source: OpenCodeSource,
-  upstreamId: string,
-): TransportKind {
-  const synced = upstreamMetadataFor(source, upstreamId)?.protocol;
-  if (synced !== undefined && synced !== "unsupported") return synced;
-  const explicit = MODEL_TRANSPORT[`${source}/${upstreamId}`];
-  return explicit ?? "chat-completions";
-}
-
 /* Policy change:
  * - before: every request authenticated only with `authorization`
  * - after: `/messages` requests also carry `x-api-key`
@@ -235,6 +199,24 @@ async function openCodeFetch(
 
 /* ---------------- chat-completions transport ---------------- */
 
+/* Thinking-mode upstreams on this transport (DeepSeek, MiMo) reject a request
+ * whose replayed assistant history lacks `reasoning_content`:
+ * 400 "[invalid_request_error] The `reasoning_content` in the thinking mode
+ * must be passed back to the API" (confirmed against opencode issue #24104
+ * and the DeepSeek V4 API; an empty string satisfies the check).
+ *
+ * Policy change:
+ * - before: `reasoning_content` was sent only when the host replayed a
+ *   reasoning item for that turn; assistant history without one (tool-call
+ *   turns that skipped thinking, items authored by another provider after a
+ *   mid-session model switch, hosts that drop reasoning items) went out
+ *   without the field and the whole conversation deadlocked on the 400
+ * - after: every replayed assistant message carries `reasoning_content` —
+ *   the model's own reasoning when known, an empty string otherwise
+ * - reason: the upstream check is presence-based, so an explicit empty value
+ *   keeps multi-turn and tool-calling conversations alive
+ * - scope: chat-completions history replay only; live stream parsing and the
+ *   /responses, /messages transports are unchanged */
 function buildChatMessages(
   instructions: string,
   items: ConversationItem[],
@@ -249,6 +231,8 @@ function buildChatMessages(
   };
   const flushAssistant = (): void => {
     if (!assistant) return;
+    if (assistant.reasoning_content === undefined)
+      assistant.reasoning_content = "";
     messages.push(assistant);
     assistant = undefined;
   };

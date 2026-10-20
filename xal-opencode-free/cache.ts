@@ -17,7 +17,7 @@ const CACHE_VERSION = 1 as const;
 
 /* API keys are never written to these caches — only normalized catalog
  * metadata, which is public. Cache layout follows the guide's recommended
- * `<runtime-cache>/opencode-free/{zen,go}-models.json`. */
+ * `<runtime-cache>/opencode-free/zen-models.json`. */
 function cacheDir(): string {
   return join(clientRuntime().paths.cache, "opencode-free");
 }
@@ -140,8 +140,7 @@ export async function readMetadataCache(): Promise<MetadataCache | undefined> {
       raw.version !== METADATA_CACHE_VERSION ||
       typeof raw.fetchedAt !== "number" ||
       !isRecord(raw.sources) ||
-      !isRecord(raw.sources.zen) ||
-      !isRecord(raw.sources.go)
+      !isRecord(raw.sources.zen)
     )
       return undefined;
     return raw as unknown as MetadataCache;

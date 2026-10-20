@@ -1,15 +1,12 @@
 # xal-opencode-free
 
-OpenCode Free provider plugin for [Xal](https://github.com/xal-sh/xal). It exposes **only** the models OpenCode currently serves for free on its two sources:
+OpenCode Free provider plugin for [Xal](https://github.com/xal-sh/xal). It exposes **only** the models OpenCode currently serves for free on **OpenCode Zen Free**.
 
-- **OpenCode Zen Free**
-- **OpenCode Go Free**
-
-Paid Zen models and general Go subscription models never appear. The free set is driven by the live OpenCode catalogs, so new free models show up on `/models` refresh without a plugin update.
+Paid Zen models never appear, and **OpenCode Go models are excluded entirely** — every Go catalog entry (including the `*-free` ones) is served only while a Go plan subscription is active, so none of them belong in a free-models provider. The free set is driven by the live OpenCode catalog, so new free models show up on `/models` refresh without a plugin update.
 
 ## Automatic model metadata sync
 
-OpenCode's `/models` catalogs list only model IDs. Everything else the plugin needs — each model's display name, context limit, whether it has been retired, and which protocol it is served on — is synced at runtime from [models.dev](https://models.dev) (`opencode` = Zen, `opencode-go` = Go), the same metadata OpenCode's own client uses. No plugin update or reinstall is needed when OpenCode changes a model:
+OpenCode's `/models` catalog lists only model IDs. Everything else the plugin needs — each model's display name, context limit, whether it has been retired, and which protocol it is served on — is synced at runtime from [models.dev](https://models.dev) (`opencode` = Zen), the same metadata OpenCode's own client uses. No plugin update or reinstall is needed when OpenCode changes a model:
 
 | upstream change                                                  | what the plugin does                                                    |
 | ---------------------------------------------------------------- | ----------------------------------------------------------------------- |
@@ -25,7 +22,7 @@ OpenCode's `/models` catalogs list only model IDs. Everything else the plugin ne
 
 ## What "FREE" means here
 
-FREE means a model that OpenCode currently serves on that source without a separate token charge or _without consuming your Go subscription allowance_ (i.e. an explicitly free / free-preview model).
+FREE means a model that OpenCode currently serves on Zen without a separate token charge (i.e. an explicitly free / free-preview model).
 
 It does **not** mean:
 
@@ -37,9 +34,9 @@ It does **not** mean:
 
 FREE is determined **fail-closed**: if we cannot be confident a model is free, it is excluded. `UNKNOWN != FREE`.
 
-## ⚠️ Go is a paid subscription service
+## ⚠️ Go models are excluded
 
-OpenCode Go itself is a paid subscription. General Go models consume your subscription allowance and are **never** exposed here. Only Go models that are explicitly offered as `*-free` / free-preview (or manually verified free) are shown. This is why most Go catalog entries are dropped.
+OpenCode Go is a paid subscription, and even its `*-free` / free-preview models are served **only while a Go plan subscription is active**. The plugin therefore does not query the Go catalog at all and never exposes `go/<id>` models.
 
 ## Install
 
@@ -62,7 +59,7 @@ The installer copies the plugin into `$XAL_DIR/plugins/xal-opencode-free`, adds 
 
 ## API key
 
-Get an OpenCode API key from `https://opencode.ai/auth` (the same key works for both Zen and Go).
+Get an OpenCode API key from `https://opencode.ai/auth`.
 
 ## Connect
 
@@ -77,7 +74,7 @@ or:
 xal connect opencode-free
 ```
 
-The key is validated against **both** sources independently. One source being unavailable (e.g. no Go entitlement) does not block a working other source. The key is stored through Xal's credential subsystem — never in plaintext in the plugin — and is redacted from any logged output.
+The key is validated against the Zen catalog. The key is stored through Xal's credential subsystem — never in plaintext in the plugin — and is redacted from any logged output.
 
 ## Use
 
@@ -98,11 +95,13 @@ Big Pickle (Zen Free)
 ...
 ```
 
-Model IDs are source-prefixed (`zen/<id>`, `go/<id>`) so the same upstream model on two sources is kept distinct. Run `/model refresh` (or `xal models opencode-free`) to reload the catalog.
+Model IDs are source-prefixed (`zen/<id>`). Run `/model refresh` (or `xal models opencode-free`) to reload the catalog.
+
+## Thinking effort (`/thinking`)
+
+Models whose upstream accepts selectable reasoning effort expose a Xal `thinking` picker (`/thinking`); the chosen level is sent as `reasoning_effort`. The effort list comes per model from models.dev `reasoning_options` (bundled fallback for the default models) and is limited to what the upstream accepts — e.g. `glm-5.3-flash-free` / `deepseek-v4.1-flash-free` offer `low / high / max`, not Xal's full set. Models that are always thinking without configuration (e.g. `big-pickle`, `mimo-*`), toggle-only models, and models served on `/responses` (Muse Spark) have no picker. The default follows the upstream's own: `max` when offered, else `high`.
 
 ## How free classification works
-
-### Zen Free
 
 0. Retired or unservable per synced metadata, or listed in `ZEN_EXCLUDED` (offline fallback, e.g. `jev-1.13-free`) → excluded
 1. `ZEN_FORCE_PAID` override → excluded
@@ -113,19 +112,19 @@ Model IDs are source-prefixed (`zen/<id>`, `go/<id>`) so the same upstream model
 6. ID ends in `-free` → free (unless paid pricing wins)
 7. Otherwise → **UNKNOWN, excluded**
 
-### Go Free
-
-Go defaults to **subscription / not free**. A Go model is only free with positive evidence:
-
-0. Retired or unservable per synced metadata, or listed in `GO_EXCLUDED` (offline fallback) → excluded
-1. `GO_FORCE_PAID` override → excluded
-2. Explicit paid/subscription metadata → excluded
-3. Official Go free metadata/list → free
-4. ID is `*-free` / `*-free-*` → free (unless paid metadata wins)
-5. `GO_FORCE_FREE` override → free
-6. Everything else → subscription model, **excluded**
+Go models never reach this evaluation — the Go catalog is not queried (see [Go models are excluded](#️-go-models-are-excluded)).
 
 `undefined` pricing is never treated as `0`. A zero-price model is free only when every relevant field is explicitly present and `0`.
+
+## Thinking models: `reasoning_content` round-trip
+
+DeepSeek/MiMo thinking-mode upstreams reject a request whose replayed assistant history lacks `reasoning_content`:
+
+```
+400 [invalid_request_error] The `reasoning_content` in the thinking mode must be passed back to the API.
+```
+
+The chat-completions transport therefore replays **every** assistant message with `reasoning_content` — the model's own reasoning when the host provides it, an explicit empty string otherwise (the upstream check is presence-based; an empty value is accepted). Tool-call turns and history written by a different model before a mid-session switch are covered too.
 
 ## Gateway client fingerprint (required)
 
@@ -138,7 +137,7 @@ OpenCode's free tier is restricted to the official OpenCode client. Without the 
 }
 ```
 
-The plugin therefore sends gateway requests (Zen + Go) with the official client's fingerprint while your own OpenCode API key still authenticates the request. Four gates are satisfied automatically (verified live against `opencode.ai`, 2026-10):
+The plugin therefore sends gateway requests with the official client's fingerprint while your own OpenCode API key still authenticates the request. Four gates are satisfied automatically (verified live against `opencode.ai`, 2026-10):
 
 | gate                 | what the plugin sends                                                                                                                      |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -173,20 +172,19 @@ If OpenCode changes the expected user-agent (e.g. a raised minimum version), ove
 
 ## Cache & refresh
 
-Each source (Zen, Go) has its own cache under `<Xal cache>/opencode-free/`:
+The Zen catalog is cached under `<Xal cache>/opencode-free/`:
 
 ```
 <runtime-cache>/opencode-free/
 ├── zen-models.json
-├── go-models.json
 ├── models-dev-metadata.json  (synced context limits / retirements / protocols)
 └── merged-free-models.json   (last known-good fallback)
 ```
 
 - Default cache TTL is **10 minutes**.
-- `/models` (refresh) force-refetches both sources.
-- If one source fails, the other's fresh result is still used; a failed source falls back to its own cache.
-- If both sources fail entirely, the last known-good merged list is used.
+- `/models` (refresh) force-refetches the catalog.
+- A failed refresh falls back to the cached catalog.
+- If the catalog cannot be fetched or served from cache at all, the last known-good merged list is used (stale `go/<id>` entries from older plugin versions are dropped).
 - API keys are never written to these caches.
 
 ## Configuration
@@ -200,7 +198,7 @@ Defaults work with no configuration. Optional keys under `pluginConfig.opencode-
       "cacheTtlMs": 600000,
       "debugModels": false,
       "modelContextWindows": {
-        "cat-jam-free": 1048576
+        "nemotron-3-ultra-free": 262144
       },
       "defaultContextWindow": 131072,
       "syncModelMetadata": true,
@@ -251,7 +249,7 @@ xal
 /opencode-free models
 ```
 
-Prints the Zen/Go free sets and each source's dropped models with their classification reason.
+Prints the Zen free set and the dropped models with their classification reason.
 
 ## Requirements
 

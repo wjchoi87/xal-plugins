@@ -56,7 +56,7 @@ describe("provider session stream lifecycle", () => {
     globalThis.fetch = originalFetch;
   });
 
-  for (const model of ["go/ox-alpha-free", "zen/big-pickle"]) {
+  for (const model of ["zen/big-pickle", "zen/glm-5.3-flash-free"]) {
     test(`${model}: early break releases the response reader`, async () => {
       const body = streamBody();
       globalThis.fetch = (async (_input: Parameters<typeof fetch>[0]) =>
@@ -88,7 +88,7 @@ describe("provider session stream lifecycle", () => {
     const consume = async () => {
       for await (const _event of openCodeFreeProvider.stream(
         "profile",
-        request("session-a", "go/ox-alpha-free"),
+        request("session-a", "zen/glm-5.3-flash-free"),
       )) {
         throw failure;
       }
@@ -104,7 +104,7 @@ describe("provider session stream lifecycle", () => {
     globalThis.fetch = (async (_input: Parameters<typeof fetch>[0]) =>
       new Response(body)) as typeof fetch;
     const iterator = openCodeFreeProvider
-      .stream("profile", request("session-a", "go/ox-alpha-free"))
+      .stream("profile", request("session-a", "zen/glm-5.3-flash-free"))
       [Symbol.asyncIterator]();
 
     await expect(iterator.next()).rejects.toThrow("malformed SSE data");
@@ -112,7 +112,7 @@ describe("provider session stream lifecycle", () => {
     expect(currentOpenCodeSessionId()).toBeUndefined();
   });
 
-  test("concurrent Go and Zen sessions stay isolated", async () => {
+  test("concurrent Zen sessions stay isolated", async () => {
     const seen: {
       model: string;
       sessionId: string | null;
@@ -142,8 +142,8 @@ describe("provider session stream lifecycle", () => {
     for (let attempt = 0; attempt < 10; attempt++) {
       await Promise.all(
         [
-          request("session-a", "go/ox-alpha-free"),
-          request("session-b", "go/haihai-free"),
+          request("session-a", "zen/deepseek-v4.1-flash-free"),
+          request("session-b", "zen/mimo-v2.6-flash-free"),
           request("session-zen", "zen/big-pickle"),
         ].map(async (input) => {
           const events: StreamEvent[] = [];
@@ -167,9 +167,9 @@ describe("provider session stream lifecycle", () => {
     const expectedTools = mergedTools([]).map((tool) => tool.name);
     for (const entry of seen) {
       expect(entry.sessionId).toBe(
-        entry.model === "ox-alpha-free"
+        entry.model === "deepseek-v4.1-flash-free"
           ? toOpenCodeSessionId("session-a")
-          : entry.model === "haihai-free"
+          : entry.model === "mimo-v2.6-flash-free"
             ? toOpenCodeSessionId("session-b")
             : toOpenCodeSessionId("session-zen"),
       );

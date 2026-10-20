@@ -1,8 +1,19 @@
 import { asNumber, asString, isRecord } from "./types";
-import { goBaseUrl, zenBaseUrl } from "./config";
+import { zenBaseUrl } from "./config";
 import { upstreamMetadataFor } from "./metadata";
 
-export type OpenCodeSource = "zen" | "go";
+/* Policy change:
+ * - before: the plugin served two sources — Zen (`zen/<id>`) and Go
+ *   (`go/<id>`) — exposing Go models that looked free
+ * - after: only Zen remains; the Go source is gone entirely (catalog fetch,
+ *   auth probe, metadata sync, and `go/<id>` routing all removed)
+ * - reason: every OpenCode Go model — including the `*-free` ones — is
+ *   served only while a Go plan subscription is active, so "free" Go entries
+ *   were never usable through this plugin without a paid subscription
+ * - scope: model discovery and routing; existing `zen/<id>` ids are
+ *   unaffected, stale `go/<id>` ids (cached catalogs, saved sessions) are
+ *   rejected by `parseProviderModelId` */
+export type OpenCodeSource = "zen";
 
 export type TransportKind =
   "responses" | "chat-completions" | "anthropic-messages";
@@ -46,7 +57,8 @@ const NAME_OVERRIDES: Record<string, string> = {
 /* Per-source display label appended to the Xal-visible name so users always
  * see which source a model came from. */
 export function sourceLabel(source: OpenCodeSource): string {
-  return source === "zen" ? "Zen Free" : "Go Free";
+  void source;
+  return "Zen Free";
 }
 
 /* Dots are kept so version numbers survive ("mimo-v2.6-flash-free" ->
@@ -96,7 +108,8 @@ export function displayNameFor(
 }
 
 export function baseUrlFor(source: OpenCodeSource): string {
-  return source === "zen" ? zenBaseUrl() : goBaseUrl();
+  void source;
+  return zenBaseUrl();
 }
 
 export function modelsEndpoint(source: OpenCodeSource): string {
@@ -104,7 +117,7 @@ export function modelsEndpoint(source: OpenCodeSource): string {
 }
 
 /* Resolve the inference endpoint for a source + transport. The mapping mirrors
- * OpenCode's documented Zen/Go endpoints. */
+ * OpenCode's documented Zen endpoints. */
 export function resolveEndpoint(
   source: OpenCodeSource,
   transport: TransportKind,
@@ -120,8 +133,45 @@ export function resolveEndpoint(
   }
 }
 
-/* Xal sees provider model IDs as `zen/<id>` / `go/<id>` to avoid collisions
- * when the same upstream model appears on both sources. */
+/* Without wall-clock model metadata the catalog doesn't advertise a protocol,
+ * so models default to the OpenAI-compatible chat-completions endpoint.
+ * Per-model overrides (keyed `source/upstreamId`) opt individual free models
+ * onto `/responses` or `/messages` when the upstream only serves that protocol.
+ *
+ * Policy change:
+ * - before: every model used chat-completions, so the Muse Spark contributor
+ *   models (which only serve the OpenAI `/responses` protocol) returned 500
+ *   "Internal server error" from `/chat/completions`
+ * - after: Muse Spark contributor models are routed to `/responses`
+ * - reason: `muse-spark-*-contributor-free` accept `/zen/v1/responses` (200)
+ *   but reject `chat/completions` and `/messages` (500) — verified against the
+ *   live Zen catalog
+ * - scope: requests for those exact upstream model IDs */
+const MODEL_TRANSPORT: Record<string, TransportKind> = {
+  "zen/muse-spark-1.3-contributor-free": "responses",
+};
+
+/* Resolve the transport a model is served on. The protocol synced from
+ * models.dev (metadata.ts) wins; MODEL_TRANSPORT is the fallback when no
+ * synced metadata is available.
+ *
+ * Policy change:
+ * - before: routing came only from MODEL_TRANSPORT, so a new free model served
+ *   on `/responses` or `/messages` was sent to `/chat/completions` and failed
+ * - after: the synced protocol wins; the table above is only the fallback
+ * - reason: OpenCode assigns each model one protocol and publishes it there
+ * - scope: request routing and thinking-option eligibility for every model */
+export function resolveTransport(
+  source: OpenCodeSource,
+  upstreamId: string,
+): TransportKind {
+  const synced = upstreamMetadataFor(source, upstreamId)?.protocol;
+  if (synced !== undefined && synced !== "unsupported") return synced;
+  const explicit = MODEL_TRANSPORT[`${source}/${upstreamId}`];
+  return explicit ?? "chat-completions";
+}
+
+/* Xal sees provider model IDs as `zen/<id>`. */
 export function toProviderModelId(
   source: OpenCodeSource,
   upstreamId: string,
@@ -139,7 +189,7 @@ export function parseProviderModelId(id: string): ParsedModelId | undefined {
   if (slash <= 0 || id.startsWith("/")) return undefined;
   const source = id.slice(0, slash);
   const upstreamId = id.slice(slash + 1);
-  if (source !== "zen" && source !== "go") return undefined;
+  if (source !== "zen") return undefined;
   if (!upstreamId) return undefined;
   return { source, upstreamId };
 }
@@ -155,7 +205,7 @@ interface PricedCatalog {
 }
 
 /* Shared parser for the OpenAI-style `{object:"list", data:[{id,...}]}`
- * catalog shape returned by both /zen/v1/models and /zen/go/v1/models.
+ * catalog shape returned by /zen/v1/models.
  * A single malformed entry is skipped rather than failing the whole catalog;
  * a structurally invalid top-level response fails the source. */
 function parseCatalog(input: unknown): PricedCatalog {
@@ -270,10 +320,6 @@ function defaultModalities(
 
 export function parseZenModels(input: unknown): NormalizedOpenCodeModel[] {
   return normalize("zen", parseCatalog(input));
-}
-
-export function parseGoModels(input: unknown): NormalizedOpenCodeModel[] {
-  return normalize("go", parseCatalog(input));
 }
 
 /* Extract just the upstream IDs from a parsed catalog (used by tests and the

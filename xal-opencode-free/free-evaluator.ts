@@ -14,7 +14,6 @@ export type FreeReason =
   | "manual-exclude-override"
   | "upstream-deprecated"
   | "unsupported-protocol"
-  | "go-subscription-model"
   | "insufficient-metadata";
 
 export type FreeConfidence = "high" | "medium" | "low";
@@ -31,9 +30,9 @@ export interface OverrideInfo {
   sourceUrl?: string;
 }
 
-/* Overrides are minimal exceptions, kept per source. They are the ONLY hard
- * free/paid determinations; the dynamic catalog + evaluator are the source of
- * truth for everything else. Overrides are split Zen vs Go and free vs paid. */
+/* Overrides are minimal exceptions. They are the ONLY hard free/paid
+ * determinations; the dynamic catalog + evaluator are the source of truth for
+ * everything else. */
 export const ZEN_FORCE_FREE = new Map<string, OverrideInfo>([
   [
     "big-pickle",
@@ -48,12 +47,6 @@ export const ZEN_FORCE_FREE = new Map<string, OverrideInfo>([
 export const ZEN_FORCE_PAID = new Map<string, OverrideInfo>([]);
 
 export const ZEN_OFFICIAL_FREE = new Map<string, OverrideInfo>([]);
-
-export const GO_FORCE_FREE = new Map<string, OverrideInfo>([]);
-
-export const GO_FORCE_PAID = new Map<string, OverrideInfo>([]);
-
-export const GO_OFFICIAL_FREE = new Map<string, OverrideInfo>([]);
 
 /* Models that may still appear in the live catalog but must never be exposed,
  * whatever their pricing: retired free models and models that do not speak
@@ -91,10 +84,6 @@ export const ZEN_EXCLUDED = new Map<string, OverrideInfo>([
       sourceUrl: "https://opencode.ai/v2/docs/console/models/#jev",
     },
   ],
-]);
-
-export const GO_EXCLUDED = new Map<string, OverrideInfo>([
-  ["step-5-preview-free", DEPRECATED],
 ]);
 
 function excluded(
@@ -204,65 +193,18 @@ export function evaluateZenFree(
   };
 }
 
-/* Evaluate the Go free status. Go is a paid subscription product, so its
- * catalog entries are treated as subscription/paid by default. A Go model is
- * only FREE with positive evidence it is offered free / as a free preview. */
-export function evaluateGoFree(
-  model: NormalizedOpenCodeModel,
-  upstream?: UpstreamModelMetadata,
-): FreeEvaluation {
-  // Priority 0: retired / unsupported models are never exposed.
-  if (GO_EXCLUDED.has(model.upstreamId)) return excluded();
-  const upstreamExcluded = upstreamExclusion(upstream);
-  if (upstreamExcluded) return upstreamExcluded;
-
-  // Priority 1: explicit deny override always wins.
-  if (GO_FORCE_PAID.has(model.upstreamId))
-    return {
-      status: "paid",
-      reason: "manual-paid-override",
-      confidence: "high",
-    };
-
-  // Priority 2: explicit paid/subscription metadata.
-  if (hasPaidPricing(model))
-    return {
-      status: "paid",
-      reason: "go-subscription-model",
-      confidence: "high",
-    };
-
-  // Priority 3: official Go "free" metadata or curated free list.
-  if (GO_OFFICIAL_FREE.has(model.upstreamId))
-    return {
-      status: "free",
-      reason: "official-free-list",
-      confidence: "medium",
-    };
-
-  // Priority 4: explicit free preview ID (*-free, *-free-*).
-  if (isFreeId(model.upstreamId))
-    return {
-      status: "free",
-      reason: "explicit-free-model-id",
-      confidence: "medium",
-    };
-
-  // Priority 5: manual free override (minimal exceptions).
-  if (GO_FORCE_FREE.has(model.upstreamId))
-    return {
-      status: "free",
-      reason: "manual-free-override",
-      confidence: "medium",
-    };
-
-  // Priority 6: everything else is a Go subscription model -> NOT free.
-  return { status: "paid", reason: "go-subscription-model", confidence: "low" };
-}
-
-/* Dispatch to the source-appropriate evaluator. Free exposure requires the
- * status to be exactly "free". Upstream metadata defaults to the current
- * models.dev snapshot (none until a sync has run). */
+/* Dispatch to the evaluator. Free exposure requires the status to be exactly
+ * "free". Upstream metadata defaults to the current models.dev snapshot
+ * (none until a sync has run).
+ *
+ * Policy change:
+ * - before: Go models went through `evaluateGoFree`, which could expose
+ *   `*-free` Go entries
+ * - after: the Go evaluator is gone with the Go source; only Zen models are
+ *   evaluated
+ * - reason: Go models are served only while a Go plan subscription is
+ *   active, even the free ones
+ * - scope: evaluation of catalog entries; no Go entry can be exposed */
 export function evaluateFree(
   model: NormalizedOpenCodeModel,
   upstream: UpstreamModelMetadata | undefined = upstreamMetadataFor(
@@ -270,9 +212,7 @@ export function evaluateFree(
     model.upstreamId,
   ),
 ): FreeEvaluation {
-  return model.source === "zen"
-    ? evaluateZenFree(model, upstream)
-    : evaluateGoFree(model, upstream);
+  return evaluateZenFree(model, upstream);
 }
 
 export function isExposedFree(evaluation: FreeEvaluation): boolean {

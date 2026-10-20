@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  evaluateGoFree,
   evaluateZenFree,
-  GO_FORCE_PAID,
-  GO_EXCLUDED,
   ZEN_EXCLUDED,
   ZEN_FORCE_PAID,
   type OverrideInfo,
@@ -16,21 +13,6 @@ function zen(
 ): NormalizedOpenCodeModel {
   return {
     source: "zen",
-    upstreamId: id,
-    displayName: id,
-    inputModalities: ["text"],
-    transport: "chat-completions",
-    ...(pricing === undefined ? {} : { pricing }),
-    rawMetadata: {},
-  };
-}
-
-function go(
-  id: string,
-  pricing?: NormalizedOpenCodeModel["pricing"],
-): NormalizedOpenCodeModel {
-  return {
-    source: "go",
     upstreamId: id,
     displayName: id,
     inputModalities: ["text"],
@@ -104,55 +86,5 @@ describe("evaluateZenFree", () => {
       zen("bar", { input: undefined, output: undefined }),
     );
     expect(result.status).toBe("unknown");
-  });
-});
-
-describe("evaluateGoFree", () => {
-  test("general Go model is not free", () => {
-    const result = evaluateGoFree(go("glm-5.2"));
-    expect(result.status).not.toBe("free");
-    expect(result.reason).toBe("go-subscription-model");
-  });
-
-  test("explicit Go free model is free", () => {
-    const result = evaluateGoFree(go("ox-alpha-free"));
-    expect(result.status).toBe("free");
-  });
-
-  test("Go -free id with paid metadata is NOT free", () => {
-    const result = evaluateGoFree(go("ox-alpha-free", { input: 0.2 }));
-    expect(result.status).not.toBe("free");
-  });
-
-  test("GO_FORCE_PAID always wins", () => {
-    const override: OverrideInfo = { reason: "manual deny override" };
-    GO_FORCE_PAID.set("free-thing-free", override);
-    try {
-      const result = evaluateGoFree(go("free-thing-free"));
-      expect(result.status).toBe("paid");
-      expect(result.reason).toBe("manual-paid-override");
-    } finally {
-      GO_FORCE_PAID.delete("free-thing-free");
-    }
-  });
-
-  test("GO_EXCLUDED beats -free suffix", () => {
-    GO_EXCLUDED.set("gone-free", { reason: "retired" });
-    try {
-      expect(evaluateGoFree(go("gone-free")).status).toBe("excluded");
-    } finally {
-      GO_EXCLUDED.delete("gone-free");
-    }
-  });
-
-  test("-free inside id is a free candidate", () => {
-    const result = evaluateGoFree(go("preview-free-feature"));
-    expect(result.status).toBe("free");
-  });
-
-  test("Go subscription model is never exposed (status paid)", () => {
-    for (const id of ["glm-5.2", "grok-4.6", "qwen3.7-max", "minimax-m3"]) {
-      expect(evaluateGoFree(go(id)).status).not.toBe("free");
-    }
   });
 });
