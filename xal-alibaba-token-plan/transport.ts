@@ -97,8 +97,21 @@ function buildMessages(
     assistant ??= assistantMessage();
     return assistant;
   };
+  /* Policy change:
+   * - before: `reasoning_content` was replayed only when the host supplied a
+   *   reasoning item for that turn; assistant history without one went out
+   *   without the field
+   * - after: every replayed assistant message carries `reasoning_content` —
+   *   the model's own reasoning when known, an explicit empty string otherwise
+   * - reason: thinking-mode upstreams (GLM, DeepSeek, MiMo) reject replayed
+   *   history lacking the field with 400 "The `reasoning_content` in the
+   *   thinking mode must be passed back to the API"; the check is
+   *   presence-based and an empty value is accepted
+   * - scope: chat-completions history replay only */
   const flushAssistant = (): void => {
     if (!assistant) return;
+    if (assistant.reasoning_content === undefined)
+      assistant.reasoning_content = "";
     messages.push(assistant);
     assistant = undefined;
   };
