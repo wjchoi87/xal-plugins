@@ -122,9 +122,34 @@ export async function raiseForStatus(
   const text = await response.text().catch(() => "");
   const detail = errorDetail(text) ?? text.slice(0, 500);
   const status = response.status;
-  if (status === 401 || status === 403) {
+  /* Policy change:
+   * - before: 401 and 403 both surfaced as "authentication failed — the API key
+   *   was rejected"
+   * - after: only 401 blames the credential; 403 is reported as an access
+   *   decision with the upstream reason, and 426 as a client-version problem
+   * - reason: the gateway answers 403 with a valid key whenever the account may
+   *   not use the model (FreeTierError, missing Go subscription, region gate),
+   *   so the old wording sent users to reissue keys that were never the issue
+   * - scope: every non-2xx inference and catalog response */
+  if (status === 401) {
     throw new ProviderError(
       `${name} authentication failed — the API key was rejected`,
+      { retryable: false },
+    );
+  }
+  if (status === 403) {
+    throw new ProviderError(
+      `${name} denied access to this model or feature${
+        detail ? `: ${detail}` : ""
+      }`,
+      { retryable: false },
+    );
+  }
+  if (status === 426) {
+    throw new ProviderError(
+      `${name} requires a newer OpenCode client version${
+        detail ? `: ${detail}` : ""
+      }`,
       { retryable: false },
     );
   }

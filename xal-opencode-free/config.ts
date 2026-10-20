@@ -1,3 +1,5 @@
+import { openCodeClientVersion } from "./client-version";
+
 export const DEFAULT_ZEN_BASE_URL = "https://opencode.ai/zen/v1";
 export const DEFAULT_GO_BASE_URL = "https://opencode.ai/zen/go/v1";
 
@@ -5,8 +7,20 @@ export const DEFAULT_GO_BASE_URL = "https://opencode.ai/zen/go/v1";
  * gateway expects the client's `opencode/<channel>/<version>/<artifact>`
  * format (verified live: `opencode/1.18.31` alone gets 403 FreeTierError,
  * `opencode/stable/1.19.3/cli-node` passes). Configurable so a changed
- * format or raised minimum is a config edit, not a plugin release. */
-export const DEFAULT_CLIENT_USER_AGENT = "opencode/stable/1.19.3/cli-node";
+ * format or raised minimum is a config edit, not a plugin release.
+ *
+ * Policy change:
+ * - before: the default version was the hardcoded `1.19.3`
+ * - after: the version follows the OpenCode CLI installed on this machine
+ *   (see client-version.ts) and falls back to `1.19.3`
+ * - reason: the gateway answers 426 Upgrade Required below its floor, so a
+ *   pinned default breaks every free-model request once the floor moves
+ * - scope: the default only; an explicit `clientUserAgent` still wins */
+export function defaultClientUserAgent(): string {
+  return `opencode/stable/${openCodeClientVersion()}/cli-node`;
+}
+
+export const DEFAULT_CLIENT_USER_AGENT = defaultClientUserAgent();
 
 const DEFAULT_CACHE_TTL_MS = 10 * 60 * 1000;
 export const DEFAULT_MODEL_METADATA_URL = "https://models.dev/api.json";
@@ -75,7 +89,7 @@ export function resolveConfig(raw: Record<string, unknown>): void {
     ["zenBaseUrl", () => DEFAULT_ZEN_BASE_URL],
     ["goBaseUrl", () => DEFAULT_GO_BASE_URL],
     ["modelMetadataUrl", () => DEFAULT_MODEL_METADATA_URL],
-    ["clientUserAgent", () => DEFAULT_CLIENT_USER_AGENT],
+    ["clientUserAgent", () => defaultClientUserAgent()],
   ] as const) {
     const rawValue = cfg[key];
     if (rawValue !== undefined) {

@@ -140,14 +140,24 @@ OpenCode's free tier is restricted to the official OpenCode client. Without the 
 
 The plugin therefore sends gateway requests (Zen + Go) with the official client's fingerprint while your own OpenCode API key still authenticates the request. Four gates are satisfied automatically (verified live against `opencode.ai`, 2026-10):
 
-| gate                 | what the plugin sends                                                                                                                |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| user-agent           | `opencode/<channel>/<version>/<artifact>` (default `opencode/stable/1.19.3/cli-node`, configurable via `clientUserAgent`)            |
-| `x-opencode-session` | `ses_` + descending-timestamp hex + 14 base62, deterministically mapped from the Xal session id (stable per session, cache-friendly) |
-| tool declarations    | the required quartet `{bash, glob, grep, read}` is merged into every request alongside your client's own tools                       |
-| streaming            | all requests are `stream: true` SSE                                                                                                  |
+| gate                 | what the plugin sends                                                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| user-agent           | `opencode/<channel>/<version>/<artifact>` (default `opencode/stable/<installed CLI version>/cli-node`, configurable via `clientUserAgent`) |
+| `x-opencode-session` | `ses_` + descending-timestamp hex + 14 base62, deterministically mapped from the Xal session id (stable per session, cache-friendly)       |
+| tool declarations    | the required quartet `{bash, glob, grep, read}` is merged into every request alongside your client's own tools                             |
+| streaming            | all requests are `stream: true` SSE                                                                                                        |
 
 The injected quartet tools are described as compatibility placeholders; if a model calls one anyway, the host answers with an error tool result and the model falls back to the session's real tools.
+
+> **Terms of service risk.** The fingerprint exists because the gateway refuses to serve the free tier to third-party clients, so presenting it may violate OpenCode's terms of service and put your account at risk (including suspension). It also stops working whenever OpenCode changes the check. `clientUserAgent` only changes the advertised identity; there is no off switch other than not using the plugin.
+
+The default user-agent version follows the OpenCode CLI installed on this machine:
+
+1. `XAL_OPENCODE_CLIENT_VERSION` (explicit override, any `x.y.z`)
+2. `opencode --version` — the binary on `PATH`, then `~/.opencode/bin/opencode`, cached per process
+3. the verified minimum (`VERIFIED_MINIMUM` in `client-version.ts`, currently `1.19.3`)
+
+A detection below that minimum is raised to it. `426 Upgrade Required` in an error means the gateway floor moved above both: bump `VERIFIED_MINIMUM`.
 
 If OpenCode changes the expected user-agent (e.g. a raised minimum version), override it without touching the plugin:
 
@@ -208,7 +218,7 @@ Defaults work with no configuration. Optional keys under `pluginConfig.opencode-
 - `syncModelMetadata` — runtime sync with models.dev (see above). Default `true`; `false` uses only the bundled tables.
 - `modelMetadataTtlMs` — how long synced metadata stays fresh (ms). Default `43200000` (12h).
 - `modelMetadataUrl` — metadata source. Default `https://models.dev/api.json`.
-- `clientUserAgent` — user-agent presented to the OpenCode gateway for the free-tier client check (see [Gateway client fingerprint](#gateway-client-fingerprint-required)). Default `opencode/stable/1.19.3/cli-node`.
+- `clientUserAgent` — user-agent presented to the OpenCode gateway for the free-tier client check (see [Gateway client fingerprint](#gateway-client-fingerprint-required)). Default `opencode/stable/<installed CLI version>/cli-node`, falling back to `opencode/stable/1.19.3/cli-node`.
 
 ### Context windows
 
